@@ -7,6 +7,7 @@ obj-m += caller_probe.o
 obj-m += socket_dual_probe.o
 obj-m += socket_latency_probe.o
 obj-m += puzzle_probe.o
+obj-m += full_chain_probe.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules

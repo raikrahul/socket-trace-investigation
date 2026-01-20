@@ -892,4 +892,149 @@ sk_buff from queue          (dequeued and freed)
 
 ---
 
+# LIVE FORENSIC EVIDENCE (Real Addresses)
+
+This data was captured LIVE from the running kernel on 2026-01-20.
+
+## Raw dmesg Output
+
+```
+[13919.729335] [PROBE] Full Chain Probe LOADED
+[13919.734317] === SOCKET CHAIN START ===
+[13919.734321] [1] __sys_socket ENTRY
+[13919.734323]     PID: 78726
+[13919.734325]     Args: family=2 type=1 protocol=0
+[13919.734328]     current = ffff8f4dd168d400
+[13919.734330]     current->files = ffff8f4da9aba940
+[13919.734333] [2] sock_alloc ENTRY
+[13919.734336] [3] sock_alloc RETURN
+[13919.734338]     socket = ffff8f4e33230340
+[13919.734340]     socket->state = 1
+[13919.734341]     socket->sk = 0000000000000000 (should be NULL)
+[13919.734351] [6] __sys_socket RETURN
+[13919.734352]     fd = 3
+[13919.734354]     fdt->fd[3] = ffff8f4e6b37b0c0
+[13919.734356]     file->f_op = ffffffff9416e9a0
+[13919.734357]     file->private_data = ffff8f4e33230340
+[13919.734359]     socket = ffff8f4e33230340
+[13919.734361]     socket->state = 1
+[13919.734362]     socket->type = 1
+[13919.734364]     socket->sk = ffff8f4e2e47e880
+[13919.734366]     socket->ops = ffffffff94183c00
+[13919.734367]     socket->file = ffff8f4e6b37b0c0
+[13919.734369]     sock = ffff8f4e2e47e880
+[13919.734371]     sock->sk_family = 2
+[13919.734372]     sock->sk_protocol = 6
+[13919.734374]     sock->sk_state = 7
+[13919.734375]     sock->sk_socket = ffff8f4e33230340
+[13919.734377]     sock->sk_prot = ffffffff953e2400
+[13919.734379]     BIDIRECTIONAL LINK VERIFIED
+[13919.734380] === SOCKET CHAIN COMPLETE ===
+```
+
+---
+
+## The Complete Chain (Real Memory Addresses)
+
+```
+USER SPACE:
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    fd = 3
+
+KERNEL SPACE:
+
+current (task_struct) = 0xffff8f4dd168d400
+    |
+    +-> files = 0xffff8f4da9aba940
+              |
+              +-> fdt->fd[3] = 0xffff8f4e6b37b0c0
+                               |
+                               v
+                  [struct file @ 0xffff8f4e6b37b0c0]
+                  |  f_op          = 0xffffffff9416e9a0 (socket_file_ops)
+                  |  private_data  = 0xffff8f4e33230340 ----+
+                  +----------------------------------------+ |
+                                                             v
+                       [struct socket @ 0xffff8f4e33230340]
+                       |  state  = 1 (SS_UNCONNECTED)
+                       |  type   = 1 (SOCK_STREAM)
+                       |  file   = 0xffff8f4e6b37b0c0 (back to file)
+                       |  ops    = 0xffffffff94183c00 (inet_stream_ops)
+                       |  sk     = 0xffff8f4e2e47e880 ----+
+                       +----------------------------------+ |
+                                                            v
+                             [struct sock @ 0xffff8f4e2e47e880]
+                             |  sk_family   = 2 (AF_INET)
+                             |  sk_protocol = 6 (TCP)
+                             |  sk_state    = 7 (TCP_CLOSE)
+                             |  sk_socket   = 0xffff8f4e33230340 (back!)
+                             |  sk_prot     = 0xffffffff953e2400 (tcp_prot)
+                             +-------------------------------------------+
+```
+
+---
+
+## Proof: Everything Is Integers and Pointers
+
+```
+INTEGERS:
+    fd = 3
+    family = 2
+    type = 1
+    protocol = 0
+    sk_protocol = 6
+    sk_state = 7
+    socket->state = 1
+
+POINTERS (64-bit addresses):
+    current          = 0xffff8f4dd168d400
+    files            = 0xffff8f4da9aba940
+    fdt->fd[3]       = 0xffff8f4e6b37b0c0
+    file->private    = 0xffff8f4e33230340
+    socket->sk       = 0xffff8f4e2e47e880
+    socket->file     = 0xffff8f4e6b37b0c0
+    sock->sk_socket  = 0xffff8f4e33230340
+    sock->sk_prot    = 0xffffffff953e2400
+    file->f_op       = 0xffffffff9416e9a0
+    socket->ops      = 0xffffffff94183c00
+
+LABELS (field names):
+    current, files, fdt, fd, f_op, private_data
+    socket, state, type, sk, ops, file
+    sock, sk_family, sk_protocol, sk_state, sk_socket, sk_prot
+```
+
+---
+
+## The Bidirectional Link Proof
+
+```
+socket->sk = 0xffff8f4e2e47e880
+sock->sk_socket = 0xffff8f4e33230340
+
+socket @ 0xffff8f4e33230340
+  |
+  +---> sock @ 0xffff8f4e2e47e880
+          |
+          +---> back to socket @ 0xffff8f4e33230340
+
+VERIFIED: They point to each other!
+```
+
+---
+
+## Summary
+
+**socket(AF_INET, SOCK_STREAM, 0)** creates:
+
+1. **3 kernel structures** (sock, socket, file)
+2. **6 pointers** linking them together
+3. **1 file descriptor** (integer 3) in user space
+
+The entire networking stack is just labeled integers and pointers.
+Nothing else.
+
+---
+
 **END OF INVESTIGATION**
+
