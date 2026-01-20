@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Part 2: The Proof - Split View</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #111;
+            padding: 10px 20px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header a {
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .header h1 {
+            font-size: 18px;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 50px);
+        }
+
+        .left-panel,
+        .right-panel {
+            width: 50%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .left-panel {
+            background: #0a0a0a;
+            border-right: 2px solid #333;
+        }
+
+        .right-panel {
+            background: #050505;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        h2 {
+            color: #0f0;
+            margin: 20px 0 10px 0;
+            font-size: 16px;
+        }
+
+        h3 {
+            color: #0ff;
+            margin: 15px 0 8px 0;
+            font-size: 14px;
+        }
+
+        pre {
+            background: #111;
+            padding: 15px;
+            border: 1px solid #333;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        code {
+            color: #0f0;
+        }
+
+        .axiom {
+            background: #001a00;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 3px solid #0f0;
+        }
+
+        .proof {
+            background: #1a0000;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 3px solid #f00;
+        }
+
+        .link {
+            background: #00001a;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 3px solid #00f;
+        }
+
+        .verified {
+            color: #0f0;
+            font-weight: bold;
+        }
+
+        .pointer {
+            color: #ff0;
+        }
+
+        .integer {
+            color: #0ff;
+        }
+
+        .resizer {
+            width: 4px;
+            background: #333;
+            cursor: col-resize;
+            position: absolute;
+            left: 50%;
+            top: 50px;
+            bottom: 0;
+        }
+
+        .resizer:hover {
+            background: #666;
+        }
+
+        .expand-btn {
+            position: fixed;
+            bottom: 20px;
+            padding: 10px 15px;
+            background: #333;
+            border: 1px solid #666;
+            color: #fff;
+            cursor: pointer;
+            font-family: monospace;
+        }
+
+        .expand-left {
+            left: 20px;
+        }
+
+        .expand-right {
+            right: 20px;
+        }
+
+        .expand-btn:hover {
+            background: #444;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <a href="./index.html">HOME</a>
+        <h1>PART 2: THE PROOF (Split View)</h1>
+        <span>LEFT: Theory | RIGHT: Evidence</span>
+    </div>
+
+    <div class="container">
+        <!-- LEFT PANEL: THEORY/AXIOMS -->
+        <div class="left-panel" id="leftPanel">
+            <div class="panel-title">AXIOMS & THEORY</div>
+
+            <h2>LEVEL 0: AXIOMS</h2>
+            <div class="axiom">01. INTEGER = a number: 0, 1, 2, 3, ...</div>
+            <div class="axiom">02. BYTE = 8 bits = stores 0-255</div>
+            <div class="axiom">03. ADDRESS = integer that identifies memory location</div>
+            <div class="axiom">04. POINTER = address stored in memory</div>
+            <div class="axiom">05. RAM = array of bytes, indexed by address</div>
+            <div class="axiom">06. STRUCT = group of bytes with named fields</div>
+            <div class="axiom">07. FIELD = named offset within a struct</div>
+            <div class="axiom">08. LABEL = human name for a number or address</div>
+
+            <h2>LEVEL 1: THE PROBLEM</h2>
+            <div class="axiom">09. You write: int fd = socket(AF_INET, SOCK_STREAM, 0);</div>
+            <div class="axiom">10. fd receives INTEGER 3</div>
+            <div class="axiom">11. Question: What did the kernel CREATE?</div>
+            <div class="axiom">12. Question: Where does fd=3 POINT to?</div>
+            <div class="axiom">13. Question: How are things CONNECTED?</div>
+
+            <h2>LEVEL 2: THE STRUCTURES</h2>
+
+            <h3>struct file (VFS Layer)</h3>
+            <div class="axiom">Purpose: Universal file handle</div>
+            <div class="axiom">Created by: sock_alloc_file()</div>
+            <div class="axiom">Contains: f_op, private_data</div>
+
+            <h3>struct socket (Socket Layer)</h3>
+            <div class="axiom">Purpose: Protocol-independent abstraction</div>
+            <div class="axiom">Created by: sock_alloc()</div>
+            <div class="axiom">Contains: state, type, sk, file, ops</div>
+
+            <h3>struct sock (Transport Layer)</h3>
+            <div class="axiom">Purpose: TCP/UDP state machine</div>
+            <div class="axiom">Created by: sk_alloc()</div>
+            <div class="axiom">Contains: sk_family, sk_protocol, sk_socket, sk_prot</div>
+
+            <h2>LEVEL 3: THE CHAIN</h2>
+            <div class="link">fd = 3 (user space integer)</div>
+            <div class="link">fd[3] -> struct file (kernel pointer)</div>
+            <div class="link">file->private_data -> struct socket</div>
+            <div class="link">socket->sk -> struct sock</div>
+            <div class="link">socket->file -> struct file (back link)</div>
+            <div class="link">sock->sk_socket -> struct socket (back link)</div>
+
+            <h2>LEVEL 4: BIDIRECTIONAL PROOF</h2>
+            <div class="axiom">socket->sk = ADDRESS_X</div>
+            <div class="axiom">sock->sk_socket = ADDRESS_Y</div>
+            <div class="axiom">IF sock at ADDRESS_X has sk_socket = socket address</div>
+            <div class="axiom">AND socket at ADDRESS_Y has sk = sock address</div>
+            <div class="axiom">THEN: BIDIRECTIONAL LINK VERIFIED</div>
+
+            <h2>LEVEL 5: FINAL CONCLUSION</h2>
+            <div class="axiom">socket() creates:</div>
+            <div class="axiom">- 3 STRUCTURES (file, socket, sock)</div>
+            <div class="axiom">- 6 POINTERS linking them</div>
+            <div class="axiom">- 1 INTEGER (fd=3) returned to user</div>
+            <div class="axiom">Everything is integers, pointers, labels.</div>
+        </div>
+
+        <!-- RIGHT PANEL: CODE/PROOF -->
+        <div class="right-panel" id="rightPanel">
+            <div class="panel-title">CODE & LIVE EVIDENCE</div>
+
+            <h2>THE PROBE CODE</h2>
+            <pre><code>#include &lt;linux/kernel.h&gt;
+#include &lt;linux/kprobes.h&gt;
+#include &lt;linux/module.h&gt;
+#include &lt;linux/sched.h&gt;
+#include &lt;linux/fdtable.h&gt;
+#include &lt;linux/file.h&gt;
+#include &lt;linux/net.h&gt;
+#include &lt;net/sock.h&gt;
+
+#define TARGET_COMM "socket_test"
+
+static struct kretprobe rp_socket;
+
+static int socket_ret(struct kretprobe_instance *ri, 
+                      struct pt_regs *regs) {
+    long fd = regs->ax;
+    struct file *file;
+    struct socket *sock;
+    struct sock *sk;
+    struct fdtable *fdt;
+    
+    rcu_read_lock();
+    fdt = files_fdtable(current->files);
+    file = fdt->fd[fd];
+    rcu_read_unlock();
+    
+    sock = (struct socket *)file->private_data;
+    sk = sock->sk;
+    
+    pr_info("fd = %ld\n", fd);
+    pr_info("file = %px\n", file);
+    pr_info("socket = %px\n", sock);
+    pr_info("sock = %px\n", sk);
+    pr_info("sock->sk_socket = %px\n", sk->sk_socket);
+    
+    if (sk->sk_socket == sock)
+        pr_info("BIDIRECTIONAL LINK VERIFIED\n");
+    
+    return 0;
+}</code></pre>
+
+            <h2>THE TEST PROGRAM</h2>
+            <pre><code>#include &lt;sys/socket.h&gt;
+
+int main(void) {
+    socket(2, 1, 0);  // AF_INET, SOCK_STREAM, 0
+    return 0;
+}</code></pre>
+
+            <h2>THE COMMANDS</h2>
+            <pre><code>$ make
+$ gcc -o socket_test socket_test.c
+$ sudo dmesg -C
+$ sudo insmod full_chain_probe.ko
+$ ./socket_test
+$ sudo dmesg</code></pre>
+
+            <h2>RAW KERNEL OUTPUT</h2>
+            <pre class="proof"><code>[13919.734317] === SOCKET CHAIN START ===
+[13919.734323]     PID: <span class="integer">78726</span>
+[13919.734325]     Args: family=<span class="integer">2</span> type=<span class="integer">1</span> protocol=<span class="integer">0</span>
+[13919.734328]     current = <span class="pointer">ffff8f4dd168d400</span>
+[13919.734330]     current->files = <span class="pointer">ffff8f4da9aba940</span>
+[13919.734338]     socket = <span class="pointer">ffff8f4e33230340</span>
+[13919.734341]     socket->sk = <span class="pointer">0000000000000000</span> (NULL)
+[13919.734352]     fd = <span class="integer">3</span>
+[13919.734354]     fdt->fd[3] = <span class="pointer">ffff8f4e6b37b0c0</span>
+[13919.734357]     file->private_data = <span class="pointer">ffff8f4e33230340</span>
+[13919.734364]     socket->sk = <span class="pointer">ffff8f4e2e47e880</span>
+[13919.734367]     socket->file = <span class="pointer">ffff8f4e6b37b0c0</span>
+[13919.734371]     sock->sk_family = <span class="integer">2</span>
+[13919.734372]     sock->sk_protocol = <span class="integer">6</span>
+[13919.734374]     sock->sk_state = <span class="integer">7</span>
+[13919.734375]     sock->sk_socket = <span class="pointer">ffff8f4e33230340</span>
+[13919.734379]     <span class="verified">BIDIRECTIONAL LINK VERIFIED</span>
+[13919.734380] === SOCKET CHAIN COMPLETE ===</code></pre>
+
+            <h2>THE CHAIN (REAL ADDRESSES)</h2>
+            <pre class="link"><code>fd = <span class="integer">3</span>
+  |
+  v
+fdt->fd[3] = <span class="pointer">0xffff8f4e6b37b0c0</span>
+  |
+  v
+[struct file @ <span class="pointer">0xffff8f4e6b37b0c0</span>]
+  | private_data = <span class="pointer">0xffff8f4e33230340</span>
+  v
+[struct socket @ <span class="pointer">0xffff8f4e33230340</span>]
+  | sk = <span class="pointer">0xffff8f4e2e47e880</span>
+  | file = <span class="pointer">0xffff8f4e6b37b0c0</span> (back!)
+  v
+[struct sock @ <span class="pointer">0xffff8f4e2e47e880</span>]
+  | sk_family = <span class="integer">2</span>
+  | sk_protocol = <span class="integer">6</span>
+  | sk_state = <span class="integer">7</span>
+  | sk_socket = <span class="pointer">0xffff8f4e33230340</span> (back!)
+  
+<span class="verified">PROOF COMPLETE</span></code></pre>
+
+            <h2>ADDRESS VERIFICATION</h2>
+            <pre class="proof"><code>socket @ <span class="pointer">0xffff8f4e33230340</span>
+  -> sk = <span class="pointer">0xffff8f4e2e47e880</span>
+
+sock @ <span class="pointer">0xffff8f4e2e47e880</span>
+  -> sk_socket = <span class="pointer">0xffff8f4e33230340</span>
+
+<span class="verified">THEY POINT TO EACH OTHER!</span></code></pre>
+
+            <h2>ALL INTEGERS</h2>
+            <pre><code>fd = 3
+family = 2
+type = 1
+protocol = 0
+sk_protocol = 6
+sk_state = 7
+socket->state = 1
+PID = 78726</code></pre>
+
+            <h2>ALL POINTERS</h2>
+            <pre><code>current        = 0xffff8f4dd168d400
+files          = 0xffff8f4da9aba940
+fdt->fd[3]     = 0xffff8f4e6b37b0c0
+file->private  = 0xffff8f4e33230340
+socket->sk     = 0xffff8f4e2e47e880
+socket->file   = 0xffff8f4e6b37b0c0
+sock->sk_socket= 0xffff8f4e33230340
+sock->sk_prot  = 0xffffffff953e2400</code></pre>
+
+        </div>
+    </div>
+
+    <button class="expand-btn expand-left" onclick="expandLeft()">EXPAND LEFT</button>
+    <button class="expand-btn expand-right" onclick="expandRight()">EXPAND RIGHT</button>
+
+    <script>
+        let leftWidth = 50;
+        let rightWidth = 50;
+
+        function expandLeft() {
+            leftWidth = leftWidth === 50 ? 70 : 50;
+            rightWidth = 100 - leftWidth;
+            updatePanels();
+        }
+
+        function expandRight() {
+            rightWidth = rightWidth === 50 ? 70 : 50;
+            leftWidth = 100 - rightWidth;
+            updatePanels();
+        }
+
+        function updatePanels() {
+            document.getElementById('leftPanel').style.width = leftWidth + '%';
+            document.getElementById('rightPanel').style.width = rightWidth + '%';
+        }
+    </script>
+</body>
+
+</html>
