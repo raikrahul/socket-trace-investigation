@@ -33,7 +33,17 @@ This creates a complex object in kernel memory.
 ### TICK 1: THE CALL
 *   **You**: `socket(2, 1, 0)`
 *   **Kernel Entry**: `net/socket.c:1660` (`__sys_socket`)
-*   **Allocation**: `net/socket.c:1682` (`sock_alloc` returns `0xffff8f4e33230340`)
+*   **Action**: Call `sock_alloc()` (`net/socket.c:1682`)
+
+    **SUB-TRACE: sock_alloc() (`net/socket.c:629`)**
+    1.  `inode = new_inode_pseudo(sock_mnt->mnt_sb)`
+        *   Allocates VFS inode (Filesystem layer).
+    2.  `sock = SOCKET_I(inode)`
+        *   **Math**: `sock` is part of `socket_alloc` struct.
+        *   `container_of` math converts Inode Address -> Socket Address.
+    3.  **Result**: Returns `sock = 0xffff8f4e33230340`
+        *   This creates the **Container** (top half).
+        *   It is currently empty (`sock->sk = NULL`).
 
 ### TICK 2: THE DIRECTORY LOOKUP (Using "2")
 *   **Code Ref**: `net/socket.c:1696` (`pf = rcu_dereference(net_families[family]);`)
