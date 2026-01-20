@@ -678,4 +678,218 @@ int main(void) {
 
 ---
 
+# LINUX NETWORKING DATA STRUCTURES
+
+## Which Structures Are Active During socket()?
+
+```
+STRUCTURE        | DURING socket() | DURING send()/recv()
+-----------------|-----------------|----------------------
+struct sock      | CREATED ✓       | MODIFIED (seq, ack)
+struct socket    | CREATED ✓       | ACCESSED
+struct file      | CREATED ✓       | ACCESSED
+sk_buff          | NOT CREATED     | CREATED per packet ✓
+sk_buff_head     | INITIALIZED     | SPINNING (queues) ✓
+hash tables      | NOT ACCESSED    | LOOKUP every packet ✓
+NAPI             | NOT INVOLVED    | POLLING constantly ✓
+qdisc            | NOT INVOLVED    | EVERY TX packet ✓
+```
+
+**Answer**: During `socket()`, only struct sock, struct socket, and struct file are created. The "hot" structures (sk_buff, queues, hash tables) only spin when actual data flows.
+
+---
+
+## 1. sk_buff (THE KING OF NETWORKING)
+
+Every packet = one sk_buff. Millions created/destroyed per second on busy server.
+
+```c
+struct sk_buff {
+    struct sk_buff     *next, *prev;       // Linked list (queue)
+    struct sock        *sk;                // Owner socket
+    struct net_device  *dev;               // Network interface
+    
+    unsigned char      *head;              // Start of buffer
+    unsigned char      *data;              // Start of payload
+    unsigned char      *tail;              // End of payload
+    unsigned char      *end;               // End of buffer
+    
+    unsigned int       len;                // Payload length
+    __u16              protocol;           // ETH_P_IP, etc
+};
+```
+
+**Memory Layout:**
+```
+                 head
+                   |
+    +--------------v-------------------------------+
+    | headroom | HEADERS | PAYLOAD | tailroom     |
+    +--------------^---------^---------^-----------+
+                   |         |         |
+                 data      tail       end
+```
+
+**When Active**: Every send(), recv(), packet RX/TX
+
+---
+
+## 2. sk_buff_head (The Queue)
+
+```c
+struct sk_buff_head {
+    struct sk_buff  *next;      // First skb
+    struct sk_buff  *prev;      // Last skb
+    __u32            qlen;      // Number of skbs
+    spinlock_t       lock;      // Concurrency protection
+};
+```
+
+**Where Queues Live:**
+```
+struct sock:
+    sk_receive_queue  <- Packets waiting for read()
+    sk_write_queue    <- Packets waiting to transmit
+    sk_error_queue    <- ICMP errors
+```
+
+**When Active**: Every packet enqueue/dequeue
+
+---
+
+## 3. Hash Tables (Connection Lookup)
+
+When packet arrives, kernel must find matching socket:
+
+```c
+inet_ehash_bucket[hash(src_ip, src_port, dst_ip, dst_port)]
+```
+
+**Lookup Path:**
+```
+Packet arrives
+    |
+    v
+Extract 4-tuple (src_ip, src_port, dst_ip, dst_port)
+    |
+    v
+hash = jhash(4-tuple) & mask
+    |
+    v
+bucket = inet_ehash_bucket[hash]
+    |
+    v
+Walk linked list -> Find struct sock
+```
+
+**When Active**: Every incoming packet
+
+---
+
+## 4. NAPI (Interrupt Coalescing)
+
+Without NAPI: 1 packet = 1 interrupt (slow)
+With NAPI: Kernel polls NIC in batches
+
+```c
+struct napi_struct {
+    int    weight;              // Max packets per poll (64)
+    int    (*poll)(struct napi_struct *, int);
+};
+```
+
+**When Active**: High packet rate RX
+
+---
+
+## 5. Full Packet Path (RX)
+
+```
+NIC DMA -> Ring Buffer -> sk_buff allocation
+                               |
+                               v
+                         netif_receive_skb()
+                               |
+                               v
+                         ip_rcv() (Layer 3)
+                               |
+                               v
+                         tcp_v4_rcv() (Layer 4)
+                               |
+                               v
+                         Hash lookup -> struct sock
+                               |
+                               v
+                         skb_queue_tail(&sk->sk_receive_queue)
+                               |
+                               v
+                         wake_up(sk->sk_wq) -> User wakes
+```
+
+---
+
+## 6. Full Packet Path (TX)
+
+```
+write(fd, data, len)
+        |
+        v
+tcp_sendmsg() -> Allocate sk_buff
+        |
+        v
+skb_queue_tail(&sk->sk_write_queue)
+        |
+        v
+tcp_push() -> Build TCP header
+        |
+        v
+ip_queue_xmit() -> Build IP header
+        |
+        v
+dev_queue_xmit() -> qdisc (traffic control)
+        |
+        v
+netdev_queue -> Ring buffer -> NIC DMA -> Wire
+```
+
+---
+
+## 7. What socket() Creates vs What send() Creates
+
+**socket() allocates:**
+```
+struct sock @ 0xffff...     (1 instance, persists)
+struct socket @ 0xffff...   (1 instance, persists)
+struct file @ 0xffff...     (1 instance, persists)
+sk_receive_queue            (EMPTY, 0 sk_buffs)
+sk_write_queue              (EMPTY, 0 sk_buffs)
+```
+
+**send() allocates (per call):**
+```
+sk_buff @ 0xffff...         (1 per packet, freed after TX)
+```
+
+**recv() processes:**
+```
+sk_buff from queue          (dequeued and freed)
+```
+
+---
+
+## 8. Probeable Functions for Data Path
+
+```
+01. sk_buff creation:    skb_alloc()
+02. sk_buff destruction: kfree_skb()
+03. Queue insertion:     skb_queue_tail()
+04. Queue removal:       skb_dequeue()
+05. Socket lookup:       __inet_lookup_established()
+06. NAPI poll:           napi_poll()
+07. TCP receive:         tcp_v4_rcv()
+08. TCP send:            tcp_sendmsg()
+```
+
+---
+
 **END OF INVESTIGATION**
