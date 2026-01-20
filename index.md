@@ -9,10 +9,19 @@ We sell axiomatic understanding of the Linux Kernel.
 
 ## Products
 
-### [What happens when you write socket -- Part 1](./part1.html)
+### [Part 1: The Complete Socket Investigation](./part1.html)
 A deep dive into the `socket()` system call, featuring:
-*   Axiomatic derivation of Kprobes and Kretprobes.
-*   Visualization of Stack Hijacking.
-*   Live forensic evidence from Linux 6.14.
+*   Axiomatic derivation from counting to kernel
+*   All data structures explained
+*   60-step function trace
 
-[Buy Now - ](https://buy.stripe.com/test_placeholder) (Mock Link)
+### [Part 2: The Proof (Live Kernel Evidence)](./part2.html)
+Live forensic evidence proving socket() creates linked structures:
+*   Complete probe code to reproduce
+*   Real memory addresses from running kernel
+*   Step-by-step chain construction
+
+---
+
+All content derived from first principles. Nothing assumed.
+
