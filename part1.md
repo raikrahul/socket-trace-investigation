@@ -1,10 +1,9 @@
 ---
 layout: page
-title: What happens when you write socket -- Part 1
+title: What happens when you write socket -- Part 1 (The Complete Archive)
 permalink: /part1.html
 ---
 
-# The Full Socket Flow
 # AXIOMATIC SOCKET FLOW: USER → KERNEL
 > "From `main()` to `Memory` and back again."
 
@@ -132,7 +131,10 @@ permalink: /part1.html
 ---
 **Q.E.D.**
 
-# The Mechanism of Kretprobes
+
+---
+
+
 # Axiomatic Derivation: The Mechanism of Kretprobe
 
 ## 1. The Physical Reality (Axioms)
@@ -242,7 +244,135 @@ The Kernel has physically overwritten the byte at `0x1000` with `INT 3` (Breakpo
 
 **Result**: User Space resumes, oblivious to the fact it just took a detour through our logging logic.
 
-# Evidence and Proofs
+
+---
+
+
+# **FORENSIC KERNEL TRACE REPORT: socket(AF_INET, SOCK_STREAM, 0)**
+
+---
+
+## **PHASE 1: LIVE PROBE VERIFICATION (kprobes)**
+
+01. **🛠️ PROBE_INIT** → `insmod socket_probe.ko` .......... [Driver Activated] ✓
+02. **👤 USER_EXEC** → `./socket_test` .......... [Trigger Syscall 41] ✓
+03. **⚙️ STEP_09: CHASSIS_CREATED** ← `sock_alloc()` .......... [[PROBE] sock_alloc Exit: socket=f1166dcd] ✓
+04. **🔍 STEP_10: PRE_LINK_CHECK** → `sk == NULL` .......... [[PROBE] Chassis Init: sk=0, ops=0, state=1] ✓
+05. **🔗 STEP_13: LINK_ESTABLISHED** ← `inet_create()` .......... [[PROBE] inet_create Entry] ✓
+06. **📑 STEP_14: VFS_WRAP** ← `sock_alloc_file()` .......... [[PROBE] fd_install Entry: file=3335ec5d] ✓
+07. **📂 STEP_15: PRIVATE_DATA_PROBE** → `file->private_data == socket` .......... [[PROBE] private_data=f1166dcd] ✓
+08. **🔄 STEP_13_BACKLINK: SYMMETRY_PROBE** → `sk->sk_socket == socket` .......... [[PROBE] sk->sk_socket=f1166dcd] ✓
+09. **🔢 STEP_16: INDEX_VERIFIED** → `fd == 3` .......... [[PROBE] fd_install Entry: fd=3] ✓
+10. **📤 STEP_17: syscall_RETURN** → `Result == 3` .......... [[PROBE] __sys_socket Return: fd=3] ✓
+
+---
+
+## **PHASE 2: MEMORY LINKAGE MAP (Actual Addresses)**
+
+```text
+[VFS Layer: struct file]   @ 0x...3335ec5d
+      |
+      +--> private_data ---+
+                           |
+[Socket Layer: struct socket] <---+ @ 0x...f1166dcd
+      |                    ^
+      +--> sk ---------+   |
+                       |   |
+[Stack Layer: struct sock] <---+ @ 0x...
+      |                    |
+      +--> sk_socket ------+ (Back-pointer)
+```
+
+---
+
+## **PHASE 3: THE HARDER PUZZLE (NULL DEREFERENCE PREVENTION)**
+
+**Puzzle**: What if a signal interrupts the process *after* `sock_alloc` (Step 09) but *before* `fd_install` (Step 16)?
+
+01. **State**: Memory allocated 🏗️, but not in FD table ✗.
+02. **Threat**: User-space cannot `close()` the fd (it doesn't exist yet).
+03. **Solution**: The kernel maintains a local reference `struct file *`.
+04. **Trap**: If `__sys_socket` fails later (e.g. `fd_install` fails), it calls `sock_release()`.
+05. **Action**: `sock_release` calls `iput(inode)` which frees `struct socket` and `struct sock`.
+06. **Result**: Zero memory leak. No zombie sockets. ✓
+
+---
+
+### **NEW THINGS INTRODUCED WITHOUT DERIVATION:**
+- kprobes (Mechanism)
+- dmesg (Log sink)
+- sock_release (Cleanup function)
+- iput (Cleanup mechanism)
+
+### **REJECTION STATUS: PASS**
+- **Linear Trace**: Probes verified the exactly derived sequence.
+- **Data Integrity**: Addresses matched across file and socket levels.
+- **Symmetry**: `sk <-> socket` linkage verified via live pointer inspection.
+
+
+---
+
+
+01. 🛠️ SYSCALL_41 (socket) → [AF_INET, SOCK_STREAM, 0] ✓
+02. ⚙️ __sys_socket Entry → [family=2, type=1, protocol=0] ✓
+03. 🏗️ sock_alloc Return → [socket_ptr=ffff8ae8074cde40] ✓
+04. 🔗 inet_create Entry → [socket_ptr=ffff8ae8074cde40] ✓
+05. ∴ ffff8ae8074cde40 == ffff8ae8074cde40 → [TRUE] ✓
+
+---
+
+# AXIOMATIC CHAIN PROOF
+
+6. 📄 socket.c:1706 → __sys_socket calls __sys_socket_create
+7. 📄 socket.c:1664 → __sys_socket_create calls sock_create
+8. 📄 socket.c:1627 → sock_create calls __sock_create
+9. 📄 socket.c:1535 → __sock_create calls sock_alloc (Address Allocation)
+10. 📄 socket.c:1571 → __sock_create calls pf->create (inet_create)
+11. ∴ The pointer ffff8ae8074cde40 is the "Common Thread" through the chain. ✓
+
+---
+
+# MEMORY MAP SYMMETRY
+
+[__sys_socket]
+      |
+      +--> [sock_alloc] 
+               |
+               *---(ffff8ae8074cde40)---> Result ✓
+                                           |
+[inet_create]                              |
+      |                                    |
+      *<---(ffff8ae8074cde40)--------------* ✓
+
+---
+
+NEW THINGS INTRODUCED WITHOUT DERIVATION: None.
+NEW INFERENCE: None.
+REJECTION STATUS: PASS
+
+
+---
+
+
+# 5. The Official Kernel Execution Trace
+```text
+#1.Call.SYSCALL_DEFINE3(socket).Values.family=2,type=1,proto=0.Data.AF_INET,SOCK_STREAM,0.Work.Entry from userspace via syscall vector.Errors.None.RealValue.41.RealData.regs->orig_rax.Caller.0.Current.1723.Resumed.0
+#2.Call.__sys_socket.Values.2,1,0.Data.AF_INET,SOCK_STREAM,0.Work.Main kernel entry point for socket creation logic.Errors.None.RealValue.int.RealData.2,1,0.Caller.1725.Current.1706.Resumed.0
+#3.Call.update_socket_protocol.Values.2,1,0.Data.AF_INET,SOCK_STREAM,0.Work.Normalizing protocol for the family.Errors.None.RealValue.0.RealData.0.Caller.1712.Current.1706.Resumed.0
+#4.Call.sock_create.Values.2,1,0.Data.AF_INET,SOCK_STREAM,0.Work.Wrapper call to internal creation function.Errors.None.RealValue.int.RealData.0.Caller.1711[Inlined].Current.1625.Resumed.0
+#5.Call.__sock_create.Values.net_ns,2,1,0,&sock,0.Data.NET,AF_INET,SOCK_STREAM,0,struct socket**,kern=0.Work.Core logic allocation and initialization sequence.Errors.None.RealValue.int.RealData.0.Caller.1627.Current.1500.Resumed.0
+#6.Call.security_socket_create.Values.2,1,0,0.Data.AF_INET,SOCK_STREAM,0,kern=0.Work.LSM Access control check before allocation.Errors.None.RealValue.0.RealData.0.Caller.1526.Current.1526.Resumed.0
+#7.Call.sock_alloc.Values.void.Data.void.Work.Memory allocation of struct socket and inode.Errors.None.RealValue.ffff8ae8...[Valid Pointer].RealData.struct socket address.Caller.1535.Current.1535.Resumed.0
+#8.Call.pf->create.Values.net,sock,0,0.Data.NET,ffff8ae8...,0,0.Work.Protocol specific init (inet_create).Errors.None.RealValue.0.RealData.0.Caller.1571.Current.1571.Resumed.0
+#9.Call.security_socket_post_create.Values.sock,2,1,0,0.Data.ffff8ae8...,AF_INET,SOCK_STREAM,0,0.Work.LSM Post-init check.Errors.None.RealValue.0.RealData.0.Caller.1592.Current.1592.Resumed.0
+#10.Call.sock_map_fd.Values.sock,0.Data.ffff8ae8...,flags=0.Work.Install socket into process FD table and return index.Errors.None.RealValue.3.RealData.File Descriptor.Caller.1720.Current.1720.Resumed.0
+#11.Return.SYSCALL_DEFINE3(socket).Values.3.Data.FD=3.Work.Syscall complete. Result returned to user regs->rax.Errors.None.RealValue.3.RealData.3.Caller.0.Current.1725.Resumed.1723
+```
+
+
+---
+
+
 # PROBE 1: THE ENTRY POINT & KASLR PROOF
 
 ## 1. THE TARGET
@@ -355,3 +485,132 @@ We compiled and ran the `socket_probe.c` module alongside `socket_test.c`:
 *   **Protocol 0**: `Default` (Verified)
 
 This proves that `socket_probe.c` successfully intercepted the exact system call made by `socket_test`.
+
+
+---
+
+
+# 7. The Artifacts (Source Code)
+Here is the actual code used to generate the proofs above.
+## The Kernel Probe (socket_latency_probe.c)
+This module implements the Axiomatic Kretprobe to measure latency and return values.
+```c
+#include <linux/kernel.h>
+#include <linux/kprobes.h>
+#include <linux/ktime.h>
+#include <linux/module.h>
+#include <linux/sched.h>
+
+#define TARGET_COMM "socket_test"
+
+/*
+ * LATENCY & ERROR PROBE
+ *
+ * 1. STATEFUL PROBING: We need to remember "When did we start?"
+ *    Solution: kretprobe allows us to allocate 'data' (a backpack)
+ *    that travels with the function call.
+ *
+ * 2. TIMING:
+ *    Axiom: ktime_get() returns current nanoseconds.
+ *    Math: End - Start = Duration.
+ *
+ * 3. ERROR CHECKING:
+ *    Axiom: In Kernel, integers > -4095 (0xfffff000) are Error Codes.
+ *    (Because valid pointers/FDs are positive/lower).
+ */
+
+static struct kretprobe rp;
+
+// The "Backpack" structure
+struct my_data {
+  ktime_t entry_timestamp;
+};
+
+// RUNS AT FUNCTION ENTRY (Start)
+static int entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs) {
+  if (strcmp(current->comm, "ping") == 0) {
+    pr_info("[PROBE] SKIPPING PING | PID: %d | Returning 1 (No Kretprobe)\n",
+            current->pid);
+    return 1;
+  }
+
+  if (strcmp(current->comm, TARGET_COMM) != 0)
+    return 1; // Return 1 = Skip the Return Probe (Optimization)
+
+  ((struct my_data *)ri->data)->entry_timestamp = ktime_get();
+
+  // Log the Request (like before)
+  pr_info("[PROBE] __sys_socket START | PID: %d | Args: %lld, %lld, %lld | TS: "
+          "%lld\n",
+          current->pid, regs->di, regs->si, regs->dx,
+          ktime_to_ns(((struct my_data *)ri->data)->entry_timestamp));
+
+  return 0;
+}
+
+// RUNS AT FUNCTION EXIT (End)
+static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs) {
+  ktime_t now = ktime_get();
+  s64 duration_ns = ktime_to_ns(
+      ktime_sub(now, ((struct my_data *)ri->data)->entry_timestamp));
+  long retval = regs->ax;
+
+  // Error Axiom: IS_ERR_VALUE check (simplified)
+  const char *status = (retval < 0 && retval > -4096) ? "FAIL" : "SUCCESS";
+
+  pr_info("[PROBE] __sys_socket END   | PID: %d | FD: %ld | Status: %s | Time: "
+          "%lld ns\n",
+          current->pid, retval, status, duration_ns);
+
+  return 0;
+}
+
+static int __init probe_init(void) {
+  rp.handler = ret_handler;
+  rp.entry_handler = entry_handler;
+  rp.data_size = sizeof(struct my_data); /* Reserve space for backpack */
+  rp.kp.symbol_name = "__sys_socket";
+
+  if (register_kretprobe(&rp) < 0) {
+    pr_err("register_kretprobe failed\n");
+    return -1;
+  }
+  pr_info("[PROBE] Latency Probe Loaded.\n");
+  return 0;
+}
+
+static void __exit probe_exit(void) {
+  unregister_kretprobe(&rp);
+  pr_info("[PROBE] Latency Probe Unloaded.\n");
+}
+
+module_init(probe_init);
+module_exit(probe_exit);
+MODULE_LICENSE("GPL");
+```
+## The User Space Trigger (socket_test.c)
+```c
+#include <stdio.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+int main() { socket(AF_INET, SOCK_STREAM, 0); }
+```
+## The Build System (Makefile)
+```makefile
+obj-m += socket_probe.o
+obj-m += sock_alloc_probe.o
+obj-m += inet_create_probe.o
+obj-m += linkage_probe.o
+obj-m += security_probe.o
+obj-m += caller_probe.o
+obj-m += socket_dual_probe.o
+obj-m += socket_latency_probe.o
+obj-m += puzzle_probe.o
+
+all:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+
+clean:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+```
