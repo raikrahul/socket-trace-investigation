@@ -161,3 +161,57 @@ We cannot create the "engine" (TCP) yet because we haven't looked up the protoco
 ### Who will use it?
 The caller (`__sock_create`) catches this pointer in variable `sock`.
 It will pass this `sock` pointer to `inet_create` (in Tick 4) so that IPv4 can fill the box with TCP logic.
+
+---
+
+## 7. USER ERROR REPORT (BRUTAL)
+
+**MY MISTAKES (The Primate Brain Log):**
+
+1.  **CONFUSED NAMES**: I thought `socket` (User), `struct socket` (Kernel), and `struct sock` (Kernel) were just sloppy naming for the same thing.
+    *   **REALITY**: They are distinct objects in different memory layers.
+    *   **CORRECTION**: User `int` != Kernel `File Interface` != Kernel `Network Engine`.
+
+2.  **IGNORED THE FILESYSTEM**: I completely ignored `inode`.
+    *   **REALITY**: A socket *is* a file. It needs an inode.
+    *   **CORRECTION**: `sock_alloc` is primarily a VFS (Virtual File System) operation, not a Network operation.
+
+3.  **MAGIC ALLOCATION**: I assumed `return sock` meant "malloc a sock".
+    *   **REALITY**: The kernel allocates a hybrid "Centaur" (`socket_alloc`) containing both `socket` and `inode`.
+    *   **CORRECTION**: The pointer returned is just the *head* of a larger memory block. The `inode` is attached to the body, invisible if you don't look for it.
+
+4.  **SLOPPY READING**: I missed that `sock_alloc` returns an **EMPTY** shell.
+    *   **REALITY**: `sock->sk` is `NULL`.
+    *   **CORRECTION**: `socket(2,1,0)` is a construction sequence, not an atomic "poof". Tick 1 executes `sock_alloc` (Container) long before Tick 6 executes `sk_alloc` (Engine).
+
+---
+
+## 8. DATA STRUCTURE DIAGRAM: THE CENTAUR (Tick 1 Result)
+
+**WHY THIS DIAGRAM?**
+To prove that `struct socket` and `struct inode` are inseparable. They share the same memory allocation.
+
+**THE MEMORY BLOCK (0xffff8f4e33230340):**
+
+```text
+Memory Address       | Offset | Component          | Field Value (Real)
+---------------------|--------|--------------------|-------------------
+0xffff8f4e33230340   | +0     | struct socket      |
+                     |        |  .state            | SS_UNCONNECTED (0)
+                     |        |  .type             | 1 (SOCK_STREAM)
+                     |        |  .ops              | NULL (Waiting for Tick 2)
+                     |        |  .file             | NULL (Waiting for Alloc)
+                     |        |  .sk               | NULL (Waiting for Tick 6)
+---------------------|--------|--------------------|-------------------
+0xffff8f4e33230370   | +48    | struct inode       |
+(approx)             |        |  .i_mode           | S_IFSOCK (0140000)
+                     |        |  .i_uid            | 1000 (User R)
+                     |        |  .i_ino            | 40221 (Inode ID)
+                     |        |  .i_op             | &sockfs_inode_ops
+---------------------|--------|--------------------|-------------------
+```
+
+**CONNECTIONS:**
+1.  **User holds**: Nothing yet (FD comes later).
+2.  **Kernel holds**: `struct socket *` (0xffff8f4e33230340).
+3.  **VFS holds**: `struct inode *` (Same block, offset +48).
