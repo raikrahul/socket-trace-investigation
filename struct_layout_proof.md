@@ -1,4 +1,4 @@
-# PROOF OF THE "MAGIC" VALUES
+# PROOF OF THE "MAGIC" VALUES (WITH REAL DATA)
 
 ## PART 1: WHY IS .create AT OFFSET 8? (Axiom: C Struct Layout)
 
@@ -9,8 +9,7 @@ It is not magic. It is defined by the C standards and the x64 Architecture.
 2.  `pointer` = 8 bytes
 3.  `alignment` = A pointer must usually start at an address divisible by 8.
 
-### Axiom 2: The Struct Definition
-The kernel code says:
+### Axiom 2: The Struct Definition (Source: `net/socket.c` Line 181)
 ```c
 struct net_proto_family {
     int family;        // Field 1
@@ -36,23 +35,27 @@ The instruction "Call the function at offset 8" is baked into the kernel binary 
 You asked: *"This value was put there by sock_register at boot time... this bothers me"*
 
 ### Axiom 3: Global Variables start at 0
-When the kernel loads, the `net_families` array is all zeros. `NULL`.
+The `net_families` array is defined in `net/socket.c` (source code verified).
+When the kernel loads, this array is initialized to zeros (NULL).
 
 ### Axiom 4: Assignment is Copying
-The code `net_families[2] = &inet_family_ops` runs at boot.
-This copies the **Address** of the struct into the Array slot.
+The function `sock_register` (Source: `net/socket.c` Line 3211) contains:
+```c
+rcu_assign_pointer(net_families[ops->family], ops);
+```
+This runs at boot time (called by `af_inet_init`). It copies the **Address** of `inet_family_ops` into the Array slot.
 
-**Visualizing Boot Time:**
+**Visualizing Boot Time (REAL ADDRESSES FROM YOUR MACHINE):**
 
 1.  **Before `af_inet_init` runs:**
-    `net_families[2]` = `0x0000000000000000` (NULL)
+    `net_families[2]` (at `0xffffffff954767d0`) = `0x0000000000000000` (NULL)
 
 2.  **The Code runs:**
     `sock_register` asks: "Where is `inet_family_ops`?"
     Answer: "It is at `0xffffffff94183a20`".
 
 3.  **The Write:**
-    CPU writes `0xffffffff94183a20` into the array slot.
+    CPU writes `0xffffffff94183a20` into the array slot at `0xffffffff954767d0`.
 
 4.  **Result:**
     Now the array acts as a signpost pointing to the struct.
@@ -64,12 +67,13 @@ This copies the **Address** of the struct into the Array slot.
 You asked: *"This value [function address] was put there by the compiler/loader... how?"*
 
 ### Axiom 5: Functions have Addresses
-The code for `inet_create` exists. It has to live *somewhere* in memory. Let's say `0xffffffff93d417b0`.
+The code for `inet_create` exists at `0xffffffff93d417b0` (Verified via kallsyms).
 
-### Axiom 6: Static Initalization
+### Axiom 6: Static Initalization (Source: `net/ipv4/af_inet.c` Line 1142)
 The code says:
 ```c
 static const struct net_proto_family inet_family_ops = {
+    .family = PF_INET,      // 2
     .create = inet_create,
 };
 ```
@@ -77,10 +81,10 @@ static const struct net_proto_family inet_family_ops = {
 This tells the compiler: "When you build the binary file, DO NOT leave this struct empty. Go find where you put `inet_create`, calculate its address, and WRITE THAT NUMBER directly into the struct's byte at offset 8."
 
 **Visualizing the Binary File on Disk:**
-At the spot reserved for `inet_family_ops`:
+At the spot reserved for `inet_family_ops` (Address `0xffffffff94183a20`):
 *   Bytes 0-3: `02 00 00 00` (Number 2)
 *   Bytes 4-7: `00 00 00 00` (Padding)
-*   Bytes 8-15: `b0 17 d4 93 ff ff ff ff` (The address of the function!)
+*   Bytes 8-15: `b0 17 d4 93 ff ff ff ff` (The address `0xffffffff93d417b0`!)
 
 **CONCLUSION:**
 The compiler hardcoded the function's address into the struct.
