@@ -17,9 +17,13 @@ A deep dive into the `socket()` system call, featuring:
 
 ### [Part 2: The Proof (Live Kernel Evidence)](./part2.html)
 Live forensic evidence proving socket() creates linked structures:
-*   Complete probe code to reproduce
-*   Real memory addresses from running kernel
-*   Step-by-step chain construction
+*   [Split View (Proof vs Theory)](./part2-split.html)
+
+### [Part 3: The Ultimate View (Proof + Theory + Q&A)](./part3-tripanel.html)
+The most comprehensive view, featuring:
+*   **LEFT:** Live Proof (dmesg output)
+*   **MIDDLE:** Axiomatic Theory & Derivations
+*   **RIGHT:** Q&A addressing confusions & mistakes
 
 ---
 
