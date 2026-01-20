@@ -4,6 +4,9 @@ obj-m += inet_create_probe.o
 obj-m += linkage_probe.o
 obj-m += security_probe.o
 obj-m += caller_probe.o
+obj-m += socket_dual_probe.o
+obj-m += socket_latency_probe.o
+obj-m += puzzle_probe.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
