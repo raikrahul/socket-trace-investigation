@@ -88,4 +88,29 @@ Tick 1 is not a simple `malloc`.
 1.  It triggers a filesystem operation (`new_inode`).
 2.  It creates a hybrid object (`socket_alloc`) from a specialized cache.
 3.  It performs pointer arithmetic to expose the `socket` interface while keeping the `inode` attached for VFS management.
+## 4. CONTEXT FLOW
+
+### THE CALLER (Where we came from)
+*   **Function**: `__sys_socket`
+*   **Source**: `net/socket.c` Line 1660 (approx)
+*   **Code**:
+    ```c
+    retval = sock_create(family, type, protocol, &sock);
+    // ... which calls ...
+    return __sock_create(current->nsproxy->net_ns, family, type, protocol, res, 0);
+    // ... which calls ...
+    sock = sock_alloc(); // <--- WE ARE HERE
+    ```
+
+### THE JUMP AT END (Where we go next)
+*   **Return Value**: The address `0xffff8f4e33230340` (The Socket Container) flows back up to `__sock_create`.
+*   **Next Instruction**:
+    ```c
+    // net/socket.c Line 1696
+    pf = rcu_dereference(net_families[family]); // <--- THIS IS TICK 2
+    ...
+    err = pf->create(net, sock, protocol, kern); // <--- THIS IS TICK 3
+    ```
+
+**Result**: We have the "Container", now we proceed to find the "Factory" (Tick 2) to fill it.
 4.  This is why your socket behaves like a file (`read`/`write`) but acts like a network device (`connect`/`bind`). They are literally joined at the hip in memory.
