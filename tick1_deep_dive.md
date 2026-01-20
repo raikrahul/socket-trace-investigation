@@ -215,3 +215,23 @@ Memory Address       | Offset | Component          | Field Value (Real)
 1.  **User holds**: Nothing yet (FD comes later).
 2.  **Kernel holds**: `struct socket *` (0xffff8f4e33230340).
 3.  **VFS holds**: `struct inode *` (Same block, offset +48).
+
+---
+
+## 9. COMPARISON: sock_alloc vs sk_alloc
+
+You confused `sock_alloc` (Tick 1) with `sk_alloc` (Tick 6).
+They are **completely different functions** running at different times.
+
+| Feature | `sock_alloc()` (Tick 1) | `sk_alloc()` (Tick 6) |
+| :--- | :--- | :--- |
+| **Arguments** | **NONE** (`void`) | **MANY** (Network, Family, Protocol) |
+| **Logic** | "Give me a blank container." | "Build a specific engine (TCP/IPv4)." |
+| **Input Dependency** | **Blind** (Ignores 2 and 1) | **Dependent** (Needs 2 and 1) |
+| **Layer** | Filesystem (Generic) | Networking (Specific) |
+| **Returns** | `struct socket` | `struct sock` |
+| **Analogy** | Buying an empty phone case. | Wiring the circuit board. |
+
+**KEY TAKEAWAY**:
+Tick 1 is GENERIC setup. It doesn't care about your arguments yet.
+Tick 6 is SPECIFIC construction. It relies entirely on your arguments.
