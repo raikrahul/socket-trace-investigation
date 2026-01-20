@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Part 2: The Proof - Split View</title>
+    <title>Part 2: The Proof - Socket Chain Explained</title>
     <style>
         * {
             margin: 0;
@@ -22,19 +22,20 @@
         .header {
             background: #111;
             padding: 10px 20px;
-            border-bottom: 1px solid #333;
+            border-bottom: 2px solid #0f0;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
         .header a {
-            color: #fff;
+            color: #0f0;
             text-decoration: none;
         }
 
         .header h1 {
-            font-size: 18px;
+            font-size: 16px;
+            color: #0f0;
         }
 
         .container {
@@ -52,7 +53,7 @@
 
         .left-panel {
             background: #0a0a0a;
-            border-right: 2px solid #333;
+            border-right: 2px solid #0f0;
         }
 
         .right-panel {
@@ -60,23 +61,27 @@
         }
 
         .panel-title {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 20px;
+            font-size: 12px;
+            color: #0f0;
+            margin-bottom: 15px;
             text-transform: uppercase;
             letter-spacing: 2px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
         }
 
         h2 {
             color: #0f0;
             margin: 20px 0 10px 0;
-            font-size: 16px;
+            font-size: 14px;
+            border-left: 3px solid #0f0;
+            padding-left: 10px;
         }
 
         h3 {
             color: #0ff;
             margin: 15px 0 8px 0;
-            font-size: 14px;
+            font-size: 12px;
         }
 
         pre {
@@ -85,71 +90,106 @@
             border: 1px solid #333;
             overflow-x: auto;
             margin: 10px 0;
-            font-size: 12px;
-            line-height: 1.4;
+            font-size: 11px;
+            line-height: 1.5;
         }
 
-        code {
-            color: #0f0;
-        }
-
-        .axiom {
+        .chain-box {
             background: #001a00;
-            padding: 10px;
-            margin: 5px 0;
-            border-left: 3px solid #0f0;
+            border: 2px solid #0f0;
+            padding: 15px;
+            margin: 10px 0;
+            font-size: 11px;
+            line-height: 1.6;
         }
 
-        .proof {
-            background: #1a0000;
+        .explain {
+            background: #0a0a0a;
+            border-left: 3px solid #ff0;
             padding: 10px;
-            margin: 5px 0;
-            border-left: 3px solid #f00;
+            margin: 8px 0;
+            font-size: 11px;
         }
 
-        .link {
+        .explain-addr {
+            background: #1a0a00;
+            border-left: 3px solid #f80;
+            padding: 10px;
+            margin: 8px 0;
+            font-size: 11px;
+        }
+
+        .explain-link {
             background: #00001a;
+            border-left: 3px solid #08f;
             padding: 10px;
-            margin: 5px 0;
-            border-left: 3px solid #00f;
+            margin: 8px 0;
+            font-size: 11px;
         }
 
-        .verified {
+        .addr {
+            color: #ff0;
+            font-weight: bold;
+        }
+
+        .int {
+            color: #0ff;
+        }
+
+        .label {
+            color: #f0f;
+        }
+
+        .ptr {
+            color: #f80;
+        }
+
+        .ok {
             color: #0f0;
             font-weight: bold;
         }
 
-        .pointer {
-            color: #ff0;
+        .struct-box {
+            border: 1px solid #666;
+            margin: 10px 0;
+            background: #111;
         }
 
-        .integer {
-            color: #0ff;
+        .struct-header {
+            background: #222;
+            padding: 8px;
+            border-bottom: 1px solid #666;
+            font-weight: bold;
         }
 
-        .resizer {
-            width: 4px;
-            background: #333;
-            cursor: col-resize;
-            position: absolute;
-            left: 50%;
-            top: 50px;
-            bottom: 0;
+        .struct-field {
+            padding: 5px 10px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
         }
 
-        .resizer:hover {
-            background: #666;
+        .struct-field:last-child {
+            border-bottom: none;
+        }
+
+        .arrow {
+            color: #0f0;
+            font-size: 20px;
+            text-align: center;
+            padding: 5px;
         }
 
         .expand-btn {
             position: fixed;
             bottom: 20px;
-            padding: 10px 15px;
-            background: #333;
-            border: 1px solid #666;
-            color: #fff;
+            padding: 8px 12px;
+            background: #222;
+            border: 1px solid #0f0;
+            color: #0f0;
             cursor: pointer;
             font-family: monospace;
+            font-size: 11px;
         }
 
         .expand-left {
@@ -161,231 +201,280 @@
         }
 
         .expand-btn:hover {
-            background: #444;
+            background: #333;
         }
     </style>
 </head>
 
 <body>
     <div class="header">
-        <a href="./index.html">HOME</a>
-        <h1>PART 2: THE PROOF (Split View)</h1>
-        <span>LEFT: Theory | RIGHT: Evidence</span>
+        <a href="./index.html">[ HOME ]</a>
+        <h1>PART 2: THE PROOF - LIVE KERNEL CHAIN</h1>
+        <span style="color:#666">LEFT: Diagram | RIGHT: Explanation</span>
     </div>
 
     <div class="container">
-        <!-- LEFT PANEL: THEORY/AXIOMS -->
+        <!-- LEFT PANEL: THE CHAIN DIAGRAM -->
         <div class="left-panel" id="leftPanel">
-            <div class="panel-title">AXIOMS & THEORY</div>
+            <div class="panel-title">THE CHAIN (REAL ADDRESSES)</div>
 
-            <h2>LEVEL 0: AXIOMS</h2>
-            <div class="axiom">01. INTEGER = a number: 0, 1, 2, 3, ...</div>
-            <div class="axiom">02. BYTE = 8 bits = stores 0-255</div>
-            <div class="axiom">03. ADDRESS = integer that identifies memory location</div>
-            <div class="axiom">04. POINTER = address stored in memory</div>
-            <div class="axiom">05. RAM = array of bytes, indexed by address</div>
-            <div class="axiom">06. STRUCT = group of bytes with named fields</div>
-            <div class="axiom">07. FIELD = named offset within a struct</div>
-            <div class="axiom">08. LABEL = human name for a number or address</div>
+            <div class="chain-box">
+                <pre style="background:transparent;border:none;padding:0;margin:0;">
+=== LIVE SOCKET CHAIN (Real Addresses) ===
 
-            <h2>LEVEL 1: THE PROBLEM</h2>
-            <div class="axiom">09. You write: int fd = socket(AF_INET, SOCK_STREAM, 0);</div>
-            <div class="axiom">10. fd receives INTEGER 3</div>
-            <div class="axiom">11. Question: What did the kernel CREATE?</div>
-            <div class="axiom">12. Question: Where does fd=3 POINT to?</div>
-            <div class="axiom">13. Question: How are things CONNECTED?</div>
+PID: <span class="int">78726</span> (socket_test process)
+Args: family=<span class="int">2</span>, type=<span class="int">1</span>, protocol=<span class="int">0</span>
 
-            <h2>LEVEL 2: THE STRUCTURES</h2>
+STEP 1: current (task_struct)
+    Address: <span class="addr">0xffff8f4dd168d400</span>
+    current->files: <span class="addr">0xffff8f4da9aba940</span>
 
-            <h3>struct file (VFS Layer)</h3>
-            <div class="axiom">Purpose: Universal file handle</div>
-            <div class="axiom">Created by: sock_alloc_file()</div>
-            <div class="axiom">Contains: f_op, private_data</div>
+STEP 2-3: sock_alloc() returns struct socket
+    socket: <span class="addr">0xffff8f4e33230340</span>
+    socket->state: <span class="int">1</span> (SS_UNCONNECTED)
+    socket->sk: <span class="ptr">NULL</span> (not linked yet)
 
-            <h3>struct socket (Socket Layer)</h3>
-            <div class="axiom">Purpose: Protocol-independent abstraction</div>
-            <div class="axiom">Created by: sock_alloc()</div>
-            <div class="axiom">Contains: state, type, sk, file, ops</div>
+STEP 6: __sys_socket returns fd=<span class="int">3</span>
 
-            <h3>struct sock (Transport Layer)</h3>
-            <div class="axiom">Purpose: TCP/UDP state machine</div>
-            <div class="axiom">Created by: sk_alloc()</div>
-            <div class="axiom">Contains: sk_family, sk_protocol, sk_socket, sk_prot</div>
+    fdt->fd[3] = <span class="addr">0xffff8f4e6b37b0c0</span> (struct file)
+    
+    file->f_op = <span class="addr">0xffffffff9416e9a0</span> (socket_file_ops)
+    file->private_data = <span class="addr">0xffff8f4e33230340</span> <span class="ptr">--> points to socket!</span>
+    
+    socket = <span class="addr">0xffff8f4e33230340</span>
+    socket->state = <span class="int">1</span>
+    socket->type = <span class="int">1</span>
+    socket->sk = <span class="addr">0xffff8f4e2e47e880</span> <span class="ptr">--> points to sock!</span>
+    socket->ops = <span class="addr">0xffffffff94183c00</span> (inet_stream_ops)
+    socket->file = <span class="addr">0xffff8f4e6b37b0c0</span> <span class="ptr">--> points back to file!</span>
+    
+    sock = <span class="addr">0xffff8f4e2e47e880</span>
+    sock->sk_family = <span class="int">2</span> (AF_INET)
+    sock->sk_protocol = <span class="int">6</span> (TCP)
+    sock->sk_state = <span class="int">7</span> (TCP_CLOSE)
+    sock->sk_socket = <span class="addr">0xffff8f4e33230340</span> <span class="ptr">--> points back to socket!</span>
+    sock->sk_prot = <span class="addr">0xffffffff953e2400</span> (tcp_prot)
+    
+    <span class="ok">BIDIRECTIONAL LINK VERIFIED!</span>
+</pre>
+            </div>
 
-            <h2>LEVEL 3: THE CHAIN</h2>
-            <div class="link">fd = 3 (user space integer)</div>
-            <div class="link">fd[3] -> struct file (kernel pointer)</div>
-            <div class="link">file->private_data -> struct socket</div>
-            <div class="link">socket->sk -> struct sock</div>
-            <div class="link">socket->file -> struct file (back link)</div>
-            <div class="link">sock->sk_socket -> struct socket (back link)</div>
+            <h2>THE VISUAL CHAIN</h2>
 
-            <h2>LEVEL 4: BIDIRECTIONAL PROOF</h2>
-            <div class="axiom">socket->sk = ADDRESS_X</div>
-            <div class="axiom">sock->sk_socket = ADDRESS_Y</div>
-            <div class="axiom">IF sock at ADDRESS_X has sk_socket = socket address</div>
-            <div class="axiom">AND socket at ADDRESS_Y has sk = sock address</div>
-            <div class="axiom">THEN: BIDIRECTIONAL LINK VERIFIED</div>
+            <div class="chain-box">
+                <pre style="background:transparent;border:none;padding:0;margin:0;">
+fd=<span class="int">3</span> --> fdt->fd[3] = <span class="addr">0xffff8f4e6b37b0c0</span>
+                           |
+                           v
+              +====================================+
+              | <span class="label">struct file</span> @ <span class="addr">0xffff8f4e6b37b0c0</span>  |
+              |------------------------------------|
+              | f_op = <span class="addr">0xffffffff9416e9a0</span>        |
+              | private_data = <span class="addr">0xffff8f4e33230340</span>|--+
+              +====================================+  |
+                                                      |
+                              +-----------------------+
+                              |
+                              v
+              +====================================+
+              | <span class="label">struct socket</span> @ <span class="addr">0xffff8f4e33230340</span>|
+              |------------------------------------|
+              | state = <span class="int">1</span> (SS_UNCONNECTED)       |
+              | type = <span class="int">1</span> (SOCK_STREAM)           |
+              | file = <span class="addr">0xffff8f4e6b37b0c0</span> <span class="ptr">(back!)</span>|
+              | sk = <span class="addr">0xffff8f4e2e47e880</span>----------|--+
+              +====================================+  |
+                              ^                       |
+                              |                       |
+                              +-----------------------+
+                              |                       |
+                              v                       v
+              +====================================+
+              | <span class="label">struct sock</span> @ <span class="addr">0xffff8f4e2e47e880</span>   |
+              |------------------------------------|
+              | sk_family = <span class="int">2</span> (AF_INET)           |
+              | sk_protocol = <span class="int">6</span> (TCP)             |
+              | sk_state = <span class="int">7</span> (TCP_CLOSE)          |
+              | sk_socket = <span class="addr">0xffff8f4e33230340</span> <span class="ptr">(back!)</span>|
+              | sk_prot = <span class="addr">0xffffffff953e2400</span>      |
+              +====================================+
+</pre>
+            </div>
 
-            <h2>LEVEL 5: FINAL CONCLUSION</h2>
-            <div class="axiom">socket() creates:</div>
-            <div class="axiom">- 3 STRUCTURES (file, socket, sock)</div>
-            <div class="axiom">- 6 POINTERS linking them</div>
-            <div class="axiom">- 1 INTEGER (fd=3) returned to user</div>
-            <div class="axiom">Everything is integers, pointers, labels.</div>
+            <h2>POINTER VERIFICATION</h2>
+            <div class="chain-box">
+                <pre style="background:transparent;border:none;padding:0;margin:0;">
+socket->sk       = <span class="addr">0xffff8f4e2e47e880</span>
+sock->sk_socket  = <span class="addr">0xffff8f4e33230340</span>
+
+sock is AT address <span class="addr">0xffff8f4e2e47e880</span>
+socket is AT address <span class="addr">0xffff8f4e33230340</span>
+
+socket->sk EQUALS sock's address <span class="ok">OK</span>
+sock->sk_socket EQUALS socket's address <span class="ok">OK</span>
+
+<span class="ok">THEY POINT TO EACH OTHER!</span>
+</pre>
+            </div>
         </div>
 
-        <!-- RIGHT PANEL: CODE/PROOF -->
+        <!-- RIGHT PANEL: EXPLANATION -->
         <div class="right-panel" id="rightPanel">
-            <div class="panel-title">CODE & LIVE EVIDENCE</div>
+            <div class="panel-title">ADDRESS-BY-ADDRESS EXPLANATION</div>
 
-            <h2>THE PROBE CODE</h2>
-            <pre><code>#include &lt;linux/kernel.h&gt;
-#include &lt;linux/kprobes.h&gt;
-#include &lt;linux/module.h&gt;
-#include &lt;linux/sched.h&gt;
-#include &lt;linux/fdtable.h&gt;
-#include &lt;linux/file.h&gt;
-#include &lt;linux/net.h&gt;
-#include &lt;net/sock.h&gt;
+            <h2>ADDRESS 1: current</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffff8f4dd168d400</span><br>
+                <strong>What:</strong> struct task_struct (the process)<br>
+                <strong>Created:</strong> When process was fork()'d<br>
+                <strong>Contains:</strong> PID, files, memory maps, etc.
+            </div>
+            <div class="explain">
+                This is the kernel's representation of your socket_test process.
+                Every process has one. The kernel macro 'current' gives you this address.
+            </div>
 
-#define TARGET_COMM "socket_test"
+            <h2>ADDRESS 2: current->files</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffff8f4da9aba940</span><br>
+                <strong>What:</strong> struct files_struct<br>
+                <strong>Created:</strong> When process was fork()'d<br>
+                <strong>Contains:</strong> File descriptor table (fdt)
+            </div>
+            <div class="explain">
+                This points to the file descriptor table structure.
+                It has an array fdt->fd[] where each slot holds a struct file*.
+            </div>
 
-static struct kretprobe rp_socket;
+            <h2>ADDRESS 3: fdt->fd[3] (struct file)</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffff8f4e6b37b0c0</span><br>
+                <strong>What:</strong> struct file<br>
+                <strong>Created by:</strong> sock_alloc_file() during socket()<br>
+                <strong>How:</strong> Kernel called __alloc_file() from slab cache
+            </div>
+            <div class="explain">
+                This is the VFS layer wrapper. Every file descriptor points to one.
+                For sockets, the key field is private_data which points to the socket.
+            </div>
+            <div class="explain-link">
+                <strong>LINK:</strong> file->private_data = <span class="addr">0xffff8f4e33230340</span><br>
+                This links the file to the socket structure.
+            </div>
 
-static int socket_ret(struct kretprobe_instance *ri, 
-                      struct pt_regs *regs) {
-    long fd = regs->ax;
-    struct file *file;
-    struct socket *sock;
-    struct sock *sk;
-    struct fdtable *fdt;
-    
-    rcu_read_lock();
-    fdt = files_fdtable(current->files);
-    file = fdt->fd[fd];
-    rcu_read_unlock();
-    
-    sock = (struct socket *)file->private_data;
-    sk = sock->sk;
-    
-    pr_info("fd = %ld\n", fd);
-    pr_info("file = %px\n", file);
-    pr_info("socket = %px\n", sock);
-    pr_info("sock = %px\n", sk);
-    pr_info("sock->sk_socket = %px\n", sk->sk_socket);
-    
-    if (sk->sk_socket == sock)
-        pr_info("BIDIRECTIONAL LINK VERIFIED\n");
-    
-    return 0;
-}</code></pre>
+            <h2>ADDRESS 4: struct socket</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffff8f4e33230340</span><br>
+                <strong>What:</strong> struct socket<br>
+                <strong>Created by:</strong> sock_alloc() during socket()<br>
+                <strong>How:</strong> Kernel allocated from socket_cache slab
+            </div>
+            <div class="explain">
+                This is the protocol-independent socket abstraction.
+                It sits between VFS (struct file) and transport (struct sock).
+            </div>
+            <div class="explain-link">
+                <strong>LINK 1:</strong> socket->file = <span class="addr">0xffff8f4e6b37b0c0</span><br>
+                Points BACK to struct file (bidirectional)<br><br>
+                <strong>LINK 2:</strong> socket->sk = <span class="addr">0xffff8f4e2e47e880</span><br>
+                Points DOWN to struct sock (transport layer)
+            </div>
 
-            <h2>THE TEST PROGRAM</h2>
-            <pre><code>#include &lt;sys/socket.h&gt;
+            <h2>ADDRESS 5: struct sock</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffff8f4e2e47e880</span><br>
+                <strong>What:</strong> struct sock (actually struct tcp_sock)<br>
+                <strong>Created by:</strong> sk_alloc() during socket()<br>
+                <strong>How:</strong> Kernel allocated from tcp_sock slab cache
+            </div>
+            <div class="explain">
+                This is the TCP state machine. Contains:
+                - sk_family = 2 (AF_INET = IPv4)
+                - sk_protocol = 6 (IPPROTO_TCP)
+                - sk_state = 7 (TCP_CLOSE = not connected)
+            </div>
+            <div class="explain-link">
+                <strong>LINK:</strong> sock->sk_socket = <span class="addr">0xffff8f4e33230340</span><br>
+                Points BACK to struct socket (bidirectional)
+            </div>
 
-int main(void) {
-    socket(2, 1, 0);  // AF_INET, SOCK_STREAM, 0
-    return 0;
-}</code></pre>
+            <h2>ADDRESS 6: socket_file_ops</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffffffff9416e9a0</span><br>
+                <strong>What:</strong> struct file_operations<br>
+                <strong>Created:</strong> Compiled into kernel (static)<br>
+                <strong>Note:</strong> 0xffffffff = kernel text segment
+            </div>
+            <div class="explain">
+                This is a function pointer table. When you call read(fd),
+                the kernel looks up file->f_op->read and calls it.
+                For sockets, this is socket_file_ops.
+            </div>
 
-            <h2>THE COMMANDS</h2>
-            <pre><code>$ make
-$ gcc -o socket_test socket_test.c
-$ sudo dmesg -C
-$ sudo insmod full_chain_probe.ko
-$ ./socket_test
-$ sudo dmesg</code></pre>
+            <h2>ADDRESS 7: inet_stream_ops</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffffffff94183c00</span><br>
+                <strong>What:</strong> struct proto_ops<br>
+                <strong>Created:</strong> Compiled into kernel (static)
+            </div>
+            <div class="explain">
+                Protocol-specific operations for TCP over IPv4.
+                Contains bind(), listen(), accept(), connect(), etc.
+            </div>
 
-            <h2>RAW KERNEL OUTPUT</h2>
-            <pre class="proof"><code>[13919.734317] === SOCKET CHAIN START ===
-[13919.734323]     PID: <span class="integer">78726</span>
-[13919.734325]     Args: family=<span class="integer">2</span> type=<span class="integer">1</span> protocol=<span class="integer">0</span>
-[13919.734328]     current = <span class="pointer">ffff8f4dd168d400</span>
-[13919.734330]     current->files = <span class="pointer">ffff8f4da9aba940</span>
-[13919.734338]     socket = <span class="pointer">ffff8f4e33230340</span>
-[13919.734341]     socket->sk = <span class="pointer">0000000000000000</span> (NULL)
-[13919.734352]     fd = <span class="integer">3</span>
-[13919.734354]     fdt->fd[3] = <span class="pointer">ffff8f4e6b37b0c0</span>
-[13919.734357]     file->private_data = <span class="pointer">ffff8f4e33230340</span>
-[13919.734364]     socket->sk = <span class="pointer">ffff8f4e2e47e880</span>
-[13919.734367]     socket->file = <span class="pointer">ffff8f4e6b37b0c0</span>
-[13919.734371]     sock->sk_family = <span class="integer">2</span>
-[13919.734372]     sock->sk_protocol = <span class="integer">6</span>
-[13919.734374]     sock->sk_state = <span class="integer">7</span>
-[13919.734375]     sock->sk_socket = <span class="pointer">ffff8f4e33230340</span>
-[13919.734379]     <span class="verified">BIDIRECTIONAL LINK VERIFIED</span>
-[13919.734380] === SOCKET CHAIN COMPLETE ===</code></pre>
+            <h2>ADDRESS 8: tcp_prot</h2>
+            <div class="explain-addr">
+                <strong>Address:</strong> <span class="addr">0xffffffff953e2400</span><br>
+                <strong>What:</strong> struct proto (TCP protocol)<br>
+                <strong>Created:</strong> Compiled into kernel (static)
+            </div>
+            <div class="explain">
+                The TCP implementation. Contains connect(), sendmsg(), recvmsg().
+                This is where the actual TCP state machine lives.
+            </div>
 
-            <h2>THE CHAIN (REAL ADDRESSES)</h2>
-            <pre class="link"><code>fd = <span class="integer">3</span>
-  |
-  v
-fdt->fd[3] = <span class="pointer">0xffff8f4e6b37b0c0</span>
-  |
-  v
-[struct file @ <span class="pointer">0xffff8f4e6b37b0c0</span>]
-  | private_data = <span class="pointer">0xffff8f4e33230340</span>
-  v
-[struct socket @ <span class="pointer">0xffff8f4e33230340</span>]
-  | sk = <span class="pointer">0xffff8f4e2e47e880</span>
-  | file = <span class="pointer">0xffff8f4e6b37b0c0</span> (back!)
-  v
-[struct sock @ <span class="pointer">0xffff8f4e2e47e880</span>]
-  | sk_family = <span class="integer">2</span>
-  | sk_protocol = <span class="integer">6</span>
-  | sk_state = <span class="integer">7</span>
-  | sk_socket = <span class="pointer">0xffff8f4e33230340</span> (back!)
-  
-<span class="verified">PROOF COMPLETE</span></code></pre>
+            <h2>SUMMARY: THE CHAIN</h2>
+            <div class="chain-box">
+                <pre style="background:transparent;border:none;padding:0;margin:0;">
+USER SPACE:
+    fd = <span class="int">3</span> (just an integer)
 
-            <h2>ADDRESS VERIFICATION</h2>
-            <pre class="proof"><code>socket @ <span class="pointer">0xffff8f4e33230340</span>
-  -> sk = <span class="pointer">0xffff8f4e2e47e880</span>
+KERNEL SPACE:
+    fd=3
+      |
+      v
+    fdt->fd[3] = <span class="addr">0xffff8f4e6b37b0c0</span> <span class="label">[file]</span>
+      |
+      +-> private_data = <span class="addr">0xffff8f4e33230340</span> <span class="label">[socket]</span>
+            |
+            +-> sk = <span class="addr">0xffff8f4e2e47e880</span> <span class="label">[sock]</span>
+            |
+            +-> file = <span class="addr">0xffff8f4e6b37b0c0</span> <span class="ptr">(back)</span>
+                  |
+                  v
+            sock->sk_socket = <span class="addr">0xffff8f4e33230340</span> <span class="ptr">(back)</span>
 
-sock @ <span class="pointer">0xffff8f4e2e47e880</span>
-  -> sk_socket = <span class="pointer">0xffff8f4e33230340</span>
-
-<span class="verified">THEY POINT TO EACH OTHER!</span></code></pre>
-
-            <h2>ALL INTEGERS</h2>
-            <pre><code>fd = 3
-family = 2
-type = 1
-protocol = 0
-sk_protocol = 6
-sk_state = 7
-socket->state = 1
-PID = 78726</code></pre>
-
-            <h2>ALL POINTERS</h2>
-            <pre><code>current        = 0xffff8f4dd168d400
-files          = 0xffff8f4da9aba940
-fdt->fd[3]     = 0xffff8f4e6b37b0c0
-file->private  = 0xffff8f4e33230340
-socket->sk     = 0xffff8f4e2e47e880
-socket->file   = 0xffff8f4e6b37b0c0
-sock->sk_socket= 0xffff8f4e33230340
-sock->sk_prot  = 0xffffffff953e2400</code></pre>
-
+<span class="ok">3 STRUCTURES, 6 POINTERS, 1 INTEGER</span>
+</pre>
+            </div>
         </div>
     </div>
 
-    <button class="expand-btn expand-left" onclick="expandLeft()">EXPAND LEFT</button>
-    <button class="expand-btn expand-right" onclick="expandRight()">EXPAND RIGHT</button>
+    <button class="expand-btn expand-left" onclick="expandLeft()">[ EXPAND LEFT ]</button>
+    <button class="expand-btn expand-right" onclick="expandRight()">[ EXPAND RIGHT ]</button>
 
     <script>
         let leftWidth = 50;
         let rightWidth = 50;
 
         function expandLeft() {
-            leftWidth = leftWidth === 50 ? 70 : 50;
+            leftWidth = leftWidth === 50 ? 65 : 50;
             rightWidth = 100 - leftWidth;
             updatePanels();
         }
 
         function expandRight() {
-            rightWidth = rightWidth === 50 ? 70 : 50;
+            rightWidth = rightWidth === 50 ? 65 : 50;
             leftWidth = 100 - rightWidth;
             updatePanels();
         }
