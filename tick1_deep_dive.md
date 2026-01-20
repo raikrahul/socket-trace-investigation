@@ -114,3 +114,50 @@ Tick 1 is not a simple `malloc`.
 
 **Result**: We have the "Container", now we proceed to find the "Factory" (Tick 2) to fill it.
 4.  This is why your socket behaves like a file (`read`/`write`) but acts like a network device (`connect`/`bind`). They are literally joined at the hip in memory.
+
+## 5. NAMING DISAMBIGUATION (The Confusing Names)
+
+You asked: *"The name is confusing from user name socket vs sock in kernel vs socket in kernel"*
+
+Here is the rigorous breakdown:
+
+1.  **USER SPACE `socket()`** (The Function Call)
+    *   **Concept**: "Give me a phone."
+    *   **Result**: An integer (File Descriptor, e.g., `3`).
+
+2.  **KERNEL `struct socket`** (The BSD Socket / The Handle)
+    *   **Created by**: `sock_alloc()` (THIS TICK).
+    *   **Role**: **THE INTERFACE**. It talks to the User (handles system calls like `bind`, `connect`). It acts like a **FILE**.
+    *   **Analogy**: The Phone Handset.
+
+3.  **KERNEL `struct sock`** (The Network Socket / The Engine)
+    *   **Created by**: `sk_alloc()` (LATER, in Tick 6).
+    *   **Role**: **THE LOGIC**. It talks to the Network (handles TCP states, IP headers, Packet Buffers).
+    *   **Analogy**: The Circuit Board inside the phone.
+
+**Why the split?**
+*   `struct socket` is GENERIC (could be Unix socket, could be TCP). It lives in the Filesystem layer.
+*   `struct sock` is SPECIFIC (has TCP timers, retransmission queues). It lives in the Networking layer.
+
+---
+
+## 6. POST-TICK SUMMARY
+
+### Who called us?
+**Caller**: `__sock_create()` (via `__sys_socket`).
+`__sock_create` needs an empty container before it can start looking for the protocol implementation.
+
+### Is the function done?
+**Yes.** `sock_alloc()` has finished its job. It returns control to `__sock_create`.
+
+### What did it produce?
+It produced a **Pointer** (Address `0xffff8f4e33230340`) to a newly allocated `struct socket`.
+This object is **Generic** and **Empty** (points to NULL protocol).
+
+### Why till now?
+We have created the "shell" or "container" for the connection.
+We cannot create the "engine" (TCP) yet because we haven't looked up the protocol family (Tick 2) or the logic (Tick 3).
+
+### Who will use it?
+The caller (`__sock_create`) catches this pointer in variable `sock`.
+It will pass this `sock` pointer to `inet_create` (in Tick 4) so that IPv4 can fill the box with TCP logic.
