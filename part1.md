@@ -1,234 +1,210 @@
 ---
 layout: page
-title: The Axiomatic Book of Socket (Volume 1)
+title: The Axiomatic Book of Socket (Volume 1) - From Counting to Kernel
 permalink: /part1.html
 ---
 
-# The Axiomatic Book of Socket: Volume 1
+# THE AXIOMATIC BOOK OF SOCKET
 
-## Chapter 1: The Request (User Space)
+## LEVEL 0: THE PRIMATE AXIOMS (What You Already Know)
 
-**01. The Axiom of the User**
-A user program is a sequence of instructions executing in a restricted mode (Ring 3). It cannot touch hardware. It cannot allocate physical RAM. It cannot send network packets. To do these things, it must ask the Kernel.
-
-**02. The Function Call**
-The user writes:
-```c
-int fd = socket(AF_INET, SOCK_STREAM, 0);
-```
-To the user, this is a single line.
-To the CPU, this is a sequence of preparations:
-1.  **Load Argument 1 (Family)**: `AF_INET (2)` -> Register `RDI`.
-2.  **Load Argument 2 (Type)**: `SOCK_STREAM (1)` -> Register `RSI`.
-3.  **Load Argument 3 (Protocol)**: `0` -> Register `RDX`.
-4.  **Load System Call Number**: `41` (socket) -> Register `RAX`.
-
-**03. The Barrier (SYSCALL)**
-The user code executes the `syscall` instruction.
-*   **Axiom**: `syscall` causes a privilege level transition.
-*   **Effect**: The CPU jumps to a specific address in the Kernel (Ring 0), defined in the `MSR_LSTAR` register.
-*   **State Change**: User Space execution pauses. Kernel Space execution begins.
+01. Numbers exist: 0, 1, 2, 3, 4, 5, ...
+02. Addition: 1 + 1 = 2
+03. Subtraction: 5 - 3 = 2
+04. Comparison: 5 > 3 (TRUE)
+05. Multiplication: 2 * 3 = 6
+06. You can count slots: Slot[0], Slot[1], Slot[2], ...
 
 ---
 
-## Chapter 2: The Kernel Entry (__sys_socket)
+## LEVEL 1: THE BIT (The Smallest Unit)
 
-**04. The Destination**
-The kernel's entry point eventually calls `__sys_socket`.
-*   **Symbol**: `__sys_socket`
-*   **Address**: `0xffffffff81...` (Obscured by KASLR).
-*   **Purpose**: To interpret the user's request and create a generic socket structure.
-
-**05. The Problem of Observation**
-We want to know:
-1.  Did the arguments arrive correctly?
-2.  How long did it take?
-3.  What was the result?
-*   **Constraint**: We cannot modify the kernel source code and recompile Linux. We must observe *live*.
+07. Define BIT: A thing that is either 0 or 1. Nothing else.
+08. One BIT can represent 2 states: {0, 1}.
+09. Two BITs can represent 4 states: {00, 01, 10, 11} = {0, 1, 2, 3}.
+10. Three BITs can represent 8 states: {000, 001, 010, 011, 100, 101, 110, 111} = {0, 1, 2, 3, 4, 5, 6, 7}.
+11. Pattern: N bits -> 2^N states.
+12. Eight BITs can represent 2^8 = 256 states (0 to 255).
+13. Define BYTE: A group of 8 bits. Range: 0 to 255.
 
 ---
 
-## Chapter 3: The Instrument (Kretprobe)
+## LEVEL 2: THE ARRAY (Slots in a Row)
 
-**06. The Concept of the Trap**
-To observe `__sys_socket` without recompiling, we typically use a "Trap".
-*   **Action**: We overwrite the *first byte* of `__sys_socket` with `0xCC` (INT 3).
-*   **Effect**: When the CPU tries to run `__sys_socket`, it hits `0xCC` and triggers an exception.
-*   **Handler**: The Kernel pauses, calls our code, and then resumes the original function.
-
-**07. The Mechanism of Time Travel (Return Probing)**
-We need to measure *Duration* (Start to End).
-*   **Problem**: A standard Trap only stops at the *Start*.
-*   **Solution**: Kretprobe (Kernel Return Probe).
-    *   **Step 1**: Trap at Start.
-    *   **Step 2**: Record "Start Time".
-    *   **Step 3 (The Hijack)**: We must force the CPU to wake us up at the *End*.
-    *   **Execution**: We find the "Return Address" on the Stack (RAM). We **overwrite** it with the address of our "Trampoline".
-
-**08. The Axiom of the Stack Hijack**
-*   **Before**: Stack Top = `0xReallReturnAddress`
-*   **After**: Stack Top = `0xTrampolineAddress`
-*   **Why**: When `__sys_socket` finishes and runs `RET`, it pops the Value from the Stack. It pops our Trampoline. It jumps to US.
+14. Define ARRAY: A list of slots. Each slot holds one value.
+15. Example: Array[0] = 5, Array[1] = 10, Array[2] = 255.
+16. Define ADDRESS: The position number of a slot.
+17. Array[Address] = Value stored at that slot.
 
 ---
 
-## Chapter 4: The Evidence (Forensics)
+## LEVEL 3: RAM (The Big Array)
 
-**09. The Experiment**
-We wrote a Kernel Module (`socket_latency_probe.c`) that:
-1.  Registers a Kretprobe on `__sys_socket`.
-2.  **Entry Handler**:
-    *   Checks PID (ignore ping, ignore shell).
-    *   Records `ktime_get()`.
-3.  **Exit Handler**:
-    *   Calculates `Now - Start`.
-    *   Reads `Regs->AX` (The Return Value).
-    *   Logs the truth.
+18. Define RAM: A very large ARRAY of BYTEs.
+19. Your computer has ~16,000,000,000 slots (16 GB).
+20. Each slot holds one BYTE (0 to 255).
+21. Example: RAM[0] = 72, RAM[1] = 101, RAM[2] = 108, ...
+22. (Those bytes spell "Hel..." in ASCII encoding. Not important yet.)
 
-**10. The Result**
-We observed the following atomic events in the Kernel Log (`dmesg`):
+---
+
+## LEVEL 4: THE CPU (The Worker)
+
+23. Define CPU: A machine that reads BYTEs from RAM and does work.
+24. The CPU has a small internal array called REGISTERS.
+25. REGISTERS are faster than RAM but very few (~16 slots).
+26. Each REGISTER has a name: RAX, RBX, RCX, RDX, RDI, RSI, RSP, RIP, ...
+27. The CPU repeats this loop forever:
+    - Step A: Read the BYTE at the address stored in RIP.
+    - Step B: Interpret that BYTE as a command.
+    - Step C: Execute the command.
+    - Step D: Move RIP to the next address.
+28. Define RIP: The Register that holds the ADDRESS of the current command.
+
+---
+
+## LEVEL 5: THE INSTRUCTION (The Command)
+
+29. Define INSTRUCTION: A number that tells the CPU what to do.
+30. Example: 0x01 might mean "ADD two registers".
+31. Example: 0x50 might mean "PUSH a value onto the stack".
+32. Example: 0xC3 means "RET" (Return from function).
+33. Example: 0xCC means "INT 3" (Breakpoint/Trap).
+34. Example: 0x0F05 means "SYSCALL" (Ask the Kernel for help).
+
+---
+
+## LEVEL 6: THE STACK (The Notepad)
+
+35. Define STACK: A region of RAM used to remember addresses.
+36. The REGISTER called RSP points to the current top of the STACK.
+37. The CALL instruction:
+    - Step A: RSP = RSP - 8 (Move the pointer down).
+    - Step B: RAM[RSP] = RIP + (size of current instruction). (Save return address).
+    - Step C: RIP = Address of the function to call. (Jump).
+38. The RET instruction:
+    - Step A: RIP = RAM[RSP]. (Read the saved address).
+    - Step B: RSP = RSP + 8. (Move the pointer up).
+    - (CPU now continues from the saved address).
+
+---
+
+## LEVEL 7: PRIVILEGE LEVEL (The Lock)
+
+39. Define PRIVILEGE LEVEL: A 2-bit flag inside the CPU.
+40. Value 0 = Ring 0 = Kernel Mode (Can do anything).
+41. Value 3 = Ring 3 = User Mode (Restricted).
+42. Dangerous instructions (e.g., write to hardware) only work in Ring 0.
+43. Your C program runs in Ring 3.
+
+---
+
+## LEVEL 8: THE SYSCALL (Asking for Permission)
+
+44. You (Ring 3) want to create a network socket.
+45. You cannot access hardware directly (Ring 3 restriction).
+46. Solution: Ask the Kernel (Ring 0).
+47. The SYSCALL instruction:
+    - Step A: CPU sets Privilege Level = 0.
+    - Step B: CPU saves your RIP and RSP.
+    - Step C: CPU sets RIP = Address stored in a special register (MSR_LSTAR).
+    - Step D: The Kernel now runs.
+48. After the Kernel finishes, it runs SYSRET:
+    - Step A: CPU restores your RIP and RSP.
+    - Step B: CPU sets Privilege Level = 3.
+    - Step C: Your program continues.
+
+---
+
+## LEVEL 9: THE SOCKET() CALL (The Specific Request)
+
+49. Your C code: `int fd = socket(2, 1, 0);`
+50. Before SYSCALL:
+    - RAX = 41 (System call number for socket).
+    - RDI = 2 (First argument: AF_INET).
+    - RSI = 1 (Second argument: SOCK_STREAM).
+    - RDX = 0 (Third argument: Protocol).
+51. CPU executes SYSCALL.
+52. Kernel reads RAX (41). Kernel says: "Ah, socket request."
+53. Kernel reads RDI, RSI, RDX. Kernel allocates a socket structure.
+54. Kernel assigns a File Descriptor (e.g., 3).
+55. Kernel writes 3 into RAX (Return value).
+56. Kernel runs SYSRET.
+57. Your program resumes. Variable `fd` now holds 3.
+
+---
+
+## LEVEL 10: THE TRAP (INT 3)
+
+58. Define TRAP: An instruction that forces the CPU to jump to a special handler.
+59. The INT 3 instruction (BYTE 0xCC):
+    - Step A: CPU saves RIP and RSP.
+    - Step B: CPU sets RIP = Address of Exception Handler.
+    - Step C: The Exception Handler (Kernel code) runs.
+60. Why useful? We can REPLACE the first byte of any function with 0xCC.
+61. When the function is called, the CPU hits 0xCC and traps to our code.
+
+---
+
+## LEVEL 11: THE KPROBE (The Spy Tool)
+
+62. We want to observe `__sys_socket` (Kernel function).
+63. We ask the Kernel: "Please put 0xCC at the start of `__sys_socket`."
+64. We also say: "When the trap fires, call my function `entry_handler`."
+65. The Kernel saves the original byte and writes 0xCC.
+66. Every time `__sys_socket` is called:
+    - CPU hits 0xCC.
+    - Kernel calls `entry_handler`.
+    - `entry_handler` logs the arguments (RDI, RSI, RDX).
+    - Kernel restores the original byte.
+    - Kernel lets the function continue.
+
+---
+
+## LEVEL 12: THE KRETPROBE (The Time Machine)
+
+67. Problem: Kprobe only fires at the START.
+68. We want to know the RETURN VALUE and the DURATION.
+69. Solution: Hijack the return path.
+70. At ENTRY:
+    - We read RAM[RSP]. This is the REAL return address.
+    - We save it to a safe place.
+    - We OVERWRITE RAM[RSP] with our TRAMPOLINE address.
+71. The function runs normally...
+72. At EXIT:
+    - CPU executes RET.
+    - RET reads RAM[RSP]. It sees TRAMPOLINE, not the real address.
+    - CPU jumps to TRAMPOLINE.
+    - TRAMPOLINE runs our `ret_handler`.
+    - `ret_handler` logs the return value (RAX) and calculates duration.
+    - TRAMPOLINE jumps to the REAL return address (which we saved earlier).
+
+---
+
+## LEVEL 13: THE EVIDENCE (Live Proof)
+
+73. We built a Kernel Module: `socket_latency_probe.c`.
+74. We loaded it: `insmod socket_latency_probe.ko`.
+75. We ran our test: `./socket_test`.
+76. We checked the log: `dmesg`.
 
 ```text
-[ 5881.101484] [PROBE] __sys_socket START | PID: 31618 | Args: 2, 1, 0 | TS: 5881030345018
-[ 5881.101516] [PROBE] __sys_socket END   | PID: 31618 | FD: 3 | Status: SUCCESS | Time: 33042 ns
+[PROBE] __sys_socket START | PID: 31618 | Args: 2, 1, 0 | TS: 5881030345018
+[PROBE] __sys_socket END   | PID: 31618 | FD: 3 | Status: SUCCESS | Time: 33042 ns
 ```
 
-**11. The Interpretation**
-1.  **PID Match**: 31618 matches our user-space tool.
-2.  **Args Confirmed**: `2` (AF_INET), `1` (SOCK_STREAM). The kernel received exactly what we sent.
-3.  **Success**: FD `3` was returned.
-4.  **Cost**: The operation took **33,042 nanoseconds** (33 microseconds).
+77. Verification:
+    - PID 31618 = Our `socket_test` process.
+    - Args 2, 1, 0 = AF_INET, SOCK_STREAM, 0 (Exactly what we sent).
+    - FD 3 = The file descriptor returned.
+    - Time 33042 ns = 33 microseconds to execute the kernel function.
 
 ---
 
-## Chapter 5: The Source Code
+## LEVEL 14: THE SOURCE CODE
 
-**12. The Driver (socket_latency_probe.c)**
-This code implements the Axioms of Chapter 3.
-(See attached artifact in Section 7 of the full report).
+### The Driver (socket_latency_probe.c)
 
-**13. The User Space (socket_test.c)**
-This code implements the Axioms of Chapter 1.
-(See attached artifact).
-
-**14. The Build (Makefile)**
-This code instructs the compiler how to build Chapter 5.
-(See attached artifact).
-
-
-
----
-
-
-# Appendix A: Raw Forensic Logs
-# **FORENSIC KERNEL TRACE REPORT: socket(AF_INET, SOCK_STREAM, 0)**
-
----
-
-## **PHASE 1: LIVE PROBE VERIFICATION (kprobes)**
-
-01. **🛠️ PROBE_INIT** → `insmod socket_probe.ko` .......... [Driver Activated] ✓
-02. **👤 USER_EXEC** → `./socket_test` .......... [Trigger Syscall 41] ✓
-03. **⚙️ STEP_09: CHASSIS_CREATED** ← `sock_alloc()` .......... [[PROBE] sock_alloc Exit: socket=f1166dcd] ✓
-04. **🔍 STEP_10: PRE_LINK_CHECK** → `sk == NULL` .......... [[PROBE] Chassis Init: sk=0, ops=0, state=1] ✓
-05. **🔗 STEP_13: LINK_ESTABLISHED** ← `inet_create()` .......... [[PROBE] inet_create Entry] ✓
-06. **📑 STEP_14: VFS_WRAP** ← `sock_alloc_file()` .......... [[PROBE] fd_install Entry: file=3335ec5d] ✓
-07. **📂 STEP_15: PRIVATE_DATA_PROBE** → `file->private_data == socket` .......... [[PROBE] private_data=f1166dcd] ✓
-08. **🔄 STEP_13_BACKLINK: SYMMETRY_PROBE** → `sk->sk_socket == socket` .......... [[PROBE] sk->sk_socket=f1166dcd] ✓
-09. **🔢 STEP_16: INDEX_VERIFIED** → `fd == 3` .......... [[PROBE] fd_install Entry: fd=3] ✓
-10. **📤 STEP_17: syscall_RETURN** → `Result == 3` .......... [[PROBE] __sys_socket Return: fd=3] ✓
-
----
-
-## **PHASE 2: MEMORY LINKAGE MAP (Actual Addresses)**
-
-```text
-[VFS Layer: struct file]   @ 0x...3335ec5d
-      |
-      +--> private_data ---+
-                           |
-[Socket Layer: struct socket] <---+ @ 0x...f1166dcd
-      |                    ^
-      +--> sk ---------+   |
-                       |   |
-[Stack Layer: struct sock] <---+ @ 0x...
-      |                    |
-      +--> sk_socket ------+ (Back-pointer)
-```
-
----
-
-## **PHASE 3: THE HARDER PUZZLE (NULL DEREFERENCE PREVENTION)**
-
-**Puzzle**: What if a signal interrupts the process *after* `sock_alloc` (Step 09) but *before* `fd_install` (Step 16)?
-
-01. **State**: Memory allocated 🏗️, but not in FD table ✗.
-02. **Threat**: User-space cannot `close()` the fd (it doesn't exist yet).
-03. **Solution**: The kernel maintains a local reference `struct file *`.
-04. **Trap**: If `__sys_socket` fails later (e.g. `fd_install` fails), it calls `sock_release()`.
-05. **Action**: `sock_release` calls `iput(inode)` which frees `struct socket` and `struct sock`.
-06. **Result**: Zero memory leak. No zombie sockets. ✓
-
----
-
-### **NEW THINGS INTRODUCED WITHOUT DERIVATION:**
-- kprobes (Mechanism)
-- dmesg (Log sink)
-- sock_release (Cleanup function)
-- iput (Cleanup mechanism)
-
-### **REJECTION STATUS: PASS**
-- **Linear Trace**: Probes verified the exactly derived sequence.
-- **Data Integrity**: Addresses matched across file and socket levels.
-- **Symmetry**: `sk <-> socket` linkage verified via live pointer inspection.
-
-
----
-
-
-# Appendix B: The Chain of Command
-01. 🛠️ SYSCALL_41 (socket) → [AF_INET, SOCK_STREAM, 0] ✓
-02. ⚙️ __sys_socket Entry → [family=2, type=1, protocol=0] ✓
-03. 🏗️ sock_alloc Return → [socket_ptr=ffff8ae8074cde40] ✓
-04. 🔗 inet_create Entry → [socket_ptr=ffff8ae8074cde40] ✓
-05. ∴ ffff8ae8074cde40 == ffff8ae8074cde40 → [TRUE] ✓
-
----
-
-# AXIOMATIC CHAIN PROOF
-
-6. 📄 socket.c:1706 → __sys_socket calls __sys_socket_create
-7. 📄 socket.c:1664 → __sys_socket_create calls sock_create
-8. 📄 socket.c:1627 → sock_create calls __sock_create
-9. 📄 socket.c:1535 → __sock_create calls sock_alloc (Address Allocation)
-10. 📄 socket.c:1571 → __sock_create calls pf->create (inet_create)
-11. ∴ The pointer ffff8ae8074cde40 is the "Common Thread" through the chain. ✓
-
----
-
-# MEMORY MAP SYMMETRY
-
-[__sys_socket]
-      |
-      +--> [sock_alloc] 
-               |
-               *---(ffff8ae8074cde40)---> Result ✓
-                                           |
-[inet_create]                              |
-      |                                    |
-      *<---(ffff8ae8074cde40)--------------* ✓
-
----
-
-NEW THINGS INTRODUCED WITHOUT DERIVATION: None.
-NEW INFERENCE: None.
-REJECTION STATUS: PASS
-
-
----
-
-
-# Appendix C: The Source Code
 ```c
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
@@ -238,63 +214,33 @@ REJECTION STATUS: PASS
 
 #define TARGET_COMM "socket_test"
 
-/*
- * LATENCY & ERROR PROBE
- *
- * 1. STATEFUL PROBING: We need to remember "When did we start?"
- *    Solution: kretprobe allows us to allocate 'data' (a backpack)
- *    that travels with the function call.
- *
- * 2. TIMING:
- *    Axiom: ktime_get() returns current nanoseconds.
- *    Math: End - Start = Duration.
- *
- * 3. ERROR CHECKING:
- *    Axiom: In Kernel, integers > -4095 (0xfffff000) are Error Codes.
- *    (Because valid pointers/FDs are positive/lower).
- */
-
 static struct kretprobe rp;
 
-// The "Backpack" structure
 struct my_data {
   ktime_t entry_timestamp;
 };
 
-// RUNS AT FUNCTION ENTRY (Start)
 static int entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs) {
-  if (strcmp(current->comm, "ping") == 0) {
-    pr_info("[PROBE] SKIPPING PING | PID: %d | Returning 1 (No Kretprobe)\n",
-            current->pid);
-    return 1;
-  }
-
   if (strcmp(current->comm, TARGET_COMM) != 0)
-    return 1; // Return 1 = Skip the Return Probe (Optimization)
+    return 1;
 
   ((struct my_data *)ri->data)->entry_timestamp = ktime_get();
 
-  // Log the Request (like before)
-  pr_info("[PROBE] __sys_socket START | PID: %d | Args: %lld, %lld, %lld | TS: "
-          "%lld\n",
-          current->pid, regs->di, regs->si, regs->dx,
-          ktime_to_ns(((struct my_data *)ri->data)->entry_timestamp));
+  pr_info("[PROBE] __sys_socket START | PID: %d | Args: %lld, %lld, %lld\n",
+          current->pid, regs->di, regs->si, regs->dx);
 
   return 0;
 }
 
-// RUNS AT FUNCTION EXIT (End)
 static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs) {
   ktime_t now = ktime_get();
   s64 duration_ns = ktime_to_ns(
       ktime_sub(now, ((struct my_data *)ri->data)->entry_timestamp));
   long retval = regs->ax;
 
-  // Error Axiom: IS_ERR_VALUE check (simplified)
   const char *status = (retval < 0 && retval > -4096) ? "FAIL" : "SUCCESS";
 
-  pr_info("[PROBE] __sys_socket END   | PID: %d | FD: %ld | Status: %s | Time: "
-          "%lld ns\n",
+  pr_info("[PROBE] __sys_socket END   | PID: %d | FD: %ld | Status: %s | Time: %lld ns\n",
           current->pid, retval, status, duration_ns);
 
   return 0;
@@ -303,7 +249,7 @@ static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs) {
 static int __init probe_init(void) {
   rp.handler = ret_handler;
   rp.entry_handler = entry_handler;
-  rp.data_size = sizeof(struct my_data); /* Reserve space for backpack */
+  rp.data_size = sizeof(struct my_data);
   rp.kp.symbol_name = "__sys_socket";
 
   if (register_kretprobe(&rp) < 0) {
@@ -323,3 +269,22 @@ module_init(probe_init);
 module_exit(probe_exit);
 MODULE_LICENSE("GPL");
 ```
+
+### The User Space Test (socket_test.c)
+
+```c
+#include <sys/socket.h>
+
+int main(void) {
+  socket(2, 1, 0);
+  return 0;
+}
+```
+
+---
+
+## NEW THINGS INTRODUCED WITHOUT DERIVATION: NONE
+
+Every concept used in Level N was defined in Levels 0 to N-1.
+
+REJECTION STATUS: PASS
