@@ -1,0 +1,22 @@
+# Build Artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+modules.order
+Module.symvers
+.tmp_versions/
+
+# Binaries
+socket_test
+socket_test_static
+
+# Logs
+trace_output.txt
+*.log
+
+# Editor Configs
+.vscode/
+.idea/
+*.swp

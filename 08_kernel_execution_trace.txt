@@ -1,0 +1,11 @@
+#1.Call.SYSCALL_DEFINE3(socket).Values.family=2,type=1,proto=0.Data.AF_INET,SOCK_STREAM,0.Work.Entry from userspace via syscall vector.Errors.None.RealValue.41.RealData.regs->orig_rax.Caller.0.Current.1723.Resumed.0
+#2.Call.__sys_socket.Values.2,1,0.Data.AF_INET,SOCK_STREAM,0.Work.Main kernel entry point for socket creation logic.Errors.None.RealValue.int.RealData.2,1,0.Caller.1725.Current.1706.Resumed.0
+#3.Call.update_socket_protocol.Values.2,1,0.Data.AF_INET,SOCK_STREAM,0.Work.Normalizing protocol for the family.Errors.None.RealValue.0.RealData.0.Caller.1712.Current.1706.Resumed.0
+#4.Call.sock_create.Values.2,1,0.Data.AF_INET,SOCK_STREAM,0.Work.Wrapper call to internal creation function.Errors.None.RealValue.int.RealData.0.Caller.1711[Inlined].Current.1625.Resumed.0
+#5.Call.__sock_create.Values.net_ns,2,1,0,&sock,0.Data.NET,AF_INET,SOCK_STREAM,0,struct socket**,kern=0.Work.Core logic allocation and initialization sequence.Errors.None.RealValue.int.RealData.0.Caller.1627.Current.1500.Resumed.0
+#6.Call.security_socket_create.Values.2,1,0,0.Data.AF_INET,SOCK_STREAM,0,kern=0.Work.LSM Access control check before allocation.Errors.None.RealValue.0.RealData.0.Caller.1526.Current.1526.Resumed.0
+#7.Call.sock_alloc.Values.void.Data.void.Work.Memory allocation of struct socket and inode.Errors.None.RealValue.ffff8ae8...[Valid Pointer].RealData.struct socket address.Caller.1535.Current.1535.Resumed.0
+#8.Call.pf->create.Values.net,sock,0,0.Data.NET,ffff8ae8...,0,0.Work.Protocol specific init (inet_create).Errors.None.RealValue.0.RealData.0.Caller.1571.Current.1571.Resumed.0
+#9.Call.security_socket_post_create.Values.sock,2,1,0,0.Data.ffff8ae8...,AF_INET,SOCK_STREAM,0,0.Work.LSM Post-init check.Errors.None.RealValue.0.RealData.0.Caller.1592.Current.1592.Resumed.0
+#10.Call.sock_map_fd.Values.sock,0.Data.ffff8ae8...,flags=0.Work.Install socket into process FD table and return index.Errors.None.RealValue.3.RealData.File Descriptor.Caller.1720.Current.1720.Resumed.0
+#11.Return.SYSCALL_DEFINE3(socket).Values.3.Data.FD=3.Work.Syscall complete. Result returned to user regs->rax.Errors.None.RealValue.3.RealData.3.Caller.0.Current.1725.Resumed.1723

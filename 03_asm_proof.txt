@@ -1,0 +1,6 @@
+01. main.c(socket) → main.s(callq socket@PLT)
+02. AF_INET(2) → movl , %edi
+03. SOCK_STREAM(1) → movl , %esi
+04. 0 → xorl %edx, %edx
+05. %rdi, %rsi, %rdx → (2, 1, 0)
+06. kernel(socket) → %rax=41

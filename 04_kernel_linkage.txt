@@ -1,0 +1,2 @@
+LINUX_NET_H:125 → struct sock *sk
+NET_SOCK_H:438 → struct socket *sk_socket
