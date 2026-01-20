@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ page.title }}</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #FFFFFF;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 40px;
+            max-width: 800px;
+        }
+        a { color: #FFFFFF; text-decoration: underline; }
+        h1, h2, h3 { border-bottom: 1px solid #FFFFFF; padding-bottom: 5px; }
+        code, pre { background-color: #111; padding: 2px; }
+        pre { padding: 10px; border: 1px solid #333; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{{ site.baseurl }}/">HOME</a> | PURE ASCII KERNEL TRACE
+        <hr>
+    </header>
+    <main>
+        {{ content }}
+    </main>
+</body>
+</html>
