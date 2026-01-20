@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Socket Deep Dive - 3-Panel View</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #111;
+            padding: 8px 20px;
+            border-bottom: 2px solid #0f0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        .header a {
+            color: #0f0;
+            text-decoration: none;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 40px);
+        }
+
+        .panel {
+            height: 100%;
+            overflow-y: auto;
+            padding: 15px;
+            border-right: 1px solid #333;
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        .panel-proof {
+            width: 35%;
+            background: #020200;
+        }
+
+        .panel-theory {
+            width: 35%;
+            background: #000202;
+        }
+
+        .panel-qa {
+            width: 30%;
+            background: #020002;
+        }
+
+        .panel-title {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #333;
+        }
+
+        h2 {
+            color: #0f0;
+            font-size: 12px;
+            margin: 15px 0 8px 0;
+        }
+
+        h3 {
+            color: #0ff;
+            font-size: 11px;
+            margin: 10px 0 5px 0;
+        }
+
+        pre {
+            background: #111;
+            padding: 10px;
+            font-size: 10px;
+            line-height: 1.4;
+            overflow-x: auto;
+            margin: 8px 0;
+            border-left: 2px solid #333;
+        }
+
+        .addr {
+            color: #ff0;
+        }
+
+        .int {
+            color: #0ff;
+        }
+
+        .ok {
+            color: #0f0;
+        }
+
+        .ptr {
+            color: #f80;
+        }
+
+        .axiom {
+            background: #001a00;
+            padding: 8px;
+            margin: 5px 0;
+            font-size: 10px;
+            border-left: 2px solid #0f0;
+        }
+
+        .qa-item {
+            background: #0a000a;
+            padding: 10px;
+            margin: 8px 0;
+            border-left: 2px solid #f0f;
+        }
+
+        .qa-q {
+            color: #f80;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .qa-a {
+            color: #0f0;
+            font-size: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <a href="./index.html">[ HOME ]</a>
+        <span>LEFT: Live Proof | MIDDLE: Theory | RIGHT: Q&A</span>
+        <a href="./part2-split.html">[ 2-PANEL ]</a>
+    </div>
+
+    <div class="container">
+        <!-- PANEL 1: PROOF -->
+        <div class="panel panel-proof">
+            <div class="panel-title">LIVE PROOF (dmesg output)</div>
+
+            <h2>RAW KERNEL OUTPUT</h2>
+            <pre>
+[13919.734317] === SOCKET CHAIN START ===
+[13919.734323]     PID: <span class="int">78726</span>
+[13919.734325]     Args: family=<span class="int">2</span> type=<span class="int">1</span> protocol=<span class="int">0</span>
+[13919.734328]     current = <span class="addr">ffff8f4dd168d400</span>
+[13919.734330]     current->files = <span class="addr">ffff8f4da9aba940</span>
+</pre>
+
+            <h2>STEP 1: sock_alloc()</h2>
+            <pre>
+[13919.734338]     socket = <span class="addr">ffff8f4e33230340</span>
+[13919.734340]     socket->state = <span class="int">1</span>
+[13919.734341]     socket->sk = <span class="ptr">NULL</span>
+</pre>
+            <p style="font-size:10px;color:#666">socket created, sk not linked yet</p>
+
+            <h2>STEP 2: After Linking</h2>
+            <pre>
+[13919.734352]     fd = <span class="int">3</span>
+[13919.734354]     fdt->fd[3] = <span class="addr">ffff8f4e6b37b0c0</span>
+[13919.734357]     file->private_data = <span class="addr">ffff8f4e33230340</span>
+[13919.734364]     socket->sk = <span class="addr">ffff8f4e2e47e880</span>
+[13919.734367]     socket->file = <span class="addr">ffff8f4e6b37b0c0</span>
+</pre>
+
+            <h2>STEP 3: struct sock</h2>
+            <pre>
+[13919.734369]     sock = <span class="addr">ffff8f4e2e47e880</span>
+[13919.734371]     sock->sk_family = <span class="int">2</span>
+[13919.734372]     sock->sk_protocol = <span class="int">6</span>
+[13919.734374]     sock->sk_state = <span class="int">7</span>
+[13919.734375]     sock->sk_socket = <span class="addr">ffff8f4e33230340</span>
+[13919.734379]     <span class="ok">BIDIRECTIONAL LINK VERIFIED</span>
+</pre>
+
+            <h2>THE CHAIN DIAGRAM</h2>
+            <pre>
+fd=<span class="int">3</span>
+  |
+  v
+fdt->fd[3] = <span class="addr">0xffff8f4e6b37b0c0</span>
+  |
+  v
+[struct file]
+  | private_data
+  v
+[struct socket @ <span class="addr">0xffff8f4e33230340</span>]
+  | sk                    | file
+  v                       v
+[struct sock]         [back to file]
+  | sk_socket
+  v
+[back to socket]
+
+<span class="ok">ALL LINKS VERIFIED</span>
+</pre>
+        </div>
+
+        <!-- PANEL 2: THEORY -->
+        <div class="panel panel-theory">
+            <div class="panel-title">THEORY (Axioms)</div>
+
+            <h2>LEVEL 0: BASICS</h2>
+            <div class="axiom">01. BYTE = 8 bits</div>
+            <div class="axiom">02. ADDRESS = number identifying byte in RAM</div>
+            <div class="axiom">03. POINTER = ADDRESS stored in memory</div>
+            <div class="axiom">04. STRUCT = contiguous bytes with named offsets</div>
+            <div class="axiom">05. FUNCTION = bytes at ADDRESS that CPU executes</div>
+            <div class="axiom">06. FUNCTION POINTER = ADDRESS of a function</div>
+
+            <h2>LEVEL 1: ARRAYS</h2>
+            <div class="axiom">07. ARRAY = contiguous items</div>
+            <div class="axiom">08. arr[i] = base + (i * sizeof(item))</div>
+            <div class="axiom">09. arr[2] = third item (0-indexed)</div>
+
+            <h2>LEVEL 2: THE LOOKUP</h2>
+            <pre>
+10. net_families = array of struct pointers
+11. net_families[2] = pointer to inet_family_ops
+12. inet_family_ops.create = ADDRESS of inet_create()
+13. pf = net_families[2]
+14. pf->create = inet_create
+15. pf->create(sock, proto) = call inet_create
+</pre>
+
+            <h2>LEVEL 3: WHERE VALUES COME FROM</h2>
+            <pre>
+16. socket(2, 1, 0) called by you
+    - 2 -> RDI register -> family
+    - 1 -> RSI register -> type
+    - 0 -> RDX register -> protocol
+
+17. sock_alloc() called by kernel
+    - Returns: sock = 0xffff8f4e33230340
+
+18. pf->create(sock, protocol) called
+    - sock = from line 17
+    - protocol = from line 16
+</pre>
+
+            <h2>LEVEL 4: THE LINKING</h2>
+            <pre>
+19. sk_alloc(tcp_prot) called
+    - Returns: sk = 0xffff8f4e2e47e880
+
+20. sock->sk = sk (line 19 result)
+21. sk->sk_socket = sock (line 17 result)
+
+22. sock_alloc_file(sock) called
+    - Returns: file = 0xffff8f4e6b37b0c0
+
+23. file->private_data = sock
+24. sock->file = file
+
+25. fd_install(3, file)
+    - fdt->fd[3] = file
+</pre>
+
+            <h2>LEVEL 5: RESULT</h2>
+            <pre>
+26. fd = 3 returned to user space
+
+3 STRUCTURES CREATED:
+- struct file   @ 0xffff8f4e6b37b0c0
+- struct socket @ 0xffff8f4e33230340
+- struct sock   @ 0xffff8f4e2e47e880
+
+6 POINTERS LINKING THEM
+</pre>
+        </div>
+
+        <!-- PANEL 3: Q&A -->
+        <div class="panel panel-qa">
+            <div class="panel-title">Q&A (Confusions Resolved)</div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: Is net_families[2] a switch/enum lookup?</div>
+                <div class="qa-a">A: No. It's array[integer_index]. The integer 2 is literally the array index. No
+                    switch statement.</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: What does net_families[2] contain?</div>
+                <div class="qa-a">A: A pointer to struct net_proto_family which has function pointers like .create</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: Who populated net_families[2]?</div>
+                <div class="qa-a">A: At kernel boot, af_inet.c calls sock_register(&inet_family_ops) which puts it
+                    there.</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: What is pf?</div>
+                <div class="qa-a">A: Declaration: const struct net_proto_family *pf;<br>It's a pointer to a struct that
+                    contains function pointers.</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: How does pf->create() work?</div>
+                <div class="qa-a">A:
+                    1. pf = ADDRESS of struct<br>
+                    2. pf->create = read offset in struct<br>
+                    3. That offset contains function ADDRESS<br>
+                    4. pf->create(x,y) = jump to that ADDRESS with args</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: Where did sock come from?</div>
+                <div class="qa-a">A: sock_alloc() was called BEFORE pf->create(). It returned the pointer
+                    0xffff8f4e33230340.</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: Where did protocol come from?</div>
+                <div class="qa-a">A: You passed 0 as 3rd argument to socket(). It traveled through RDX register to
+                    kernel.</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: Why bidirectional links?</div>
+                <div class="qa-a">A: Navigation. Given file, find socket. Given socket, find sock. Given sock, find
+                    socket. All directions needed.</div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: What is sk_prot?</div>
+                <div class="qa-a">A: Pointer to tcp_prot = struct with TCP function pointers (connect, send, recv).
+                </div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: What is socket->ops?</div>
+                <div class="qa-a">A: Pointer to inet_stream_ops = struct with socket operations (bind, listen, accept).
+                </div>
+            </div>
+
+            <div class="qa-item">
+                <div class="qa-q">Q: What's the difference between ops and prot?</div>
+                <div class="qa-a">A: ops = socket layer operations (bind, listen)<br>prot = transport layer operations
+                    (TCP state machine)</div>
+            </div>
+
+            <h2>REPRODUCTION STEPS</h2>
+            <pre>
+# Build probe
+make
+
+# Build test
+gcc -o socket_test socket_test.c
+
+# Run
+sudo dmesg -C
+sudo insmod full_chain_probe.ko
+./socket_test
+sudo dmesg
+sudo rmmod full_chain_probe
+</pre>
+        </div>
+    </div>
+</body>
+
+</html>
