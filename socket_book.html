@@ -202,22 +202,45 @@ COMPILATION & LINKING (PRE-BOOT)
                                   The physics of the binary.
 
 ======================================================================
-BOOT INITIALIZATION SEQUENCE
+BOOT INITIALIZATION SEQUENCE (`core_initcall`)
 ======================================================================
 
-1. init_inodecache() creates slab cache "sock_inode_cache"
-   - Object size: 768 bytes
-   - Flags: SLAB_HWCACHE_ALIGN (align to 64 bytes)
-   - Constructor: init_once
+CONTEXT: WHAT HAS ALREADY HAPPENED?
+1. CPU Power-on -> BIOS/UEFI -> Bootloader -> Kernel Entry.
+2. Memory Management (SLUB) is initialized.
+3. VFS caches (dentry, inode) are initialized.
+4. The kernel reaches `do_initcalls()`.
 
-2. kern_mount(&sock_fs_type) calls:
-   - mount_pseudo()
-   - sockfs_init_fs_context()
-   - Wires sb->s_op = &sockfs_ops
+TRIGGER:
+net/socket.c: `core_initcall(sock_init);`
+- This ensures sockets are ready before IP, TCP, or any device drivers.
 
-3. Result: sock_mnt points to vfsmount with:
-   - mnt_sb->s_op = &sockfs_ops
-   - sockfs_ops[0] = sock_alloc_inode
+EXECUTION OF sock_init() (Disassembly Trace):
+1. `init_inodecache()`:
+   - Calls `kmem_cache_create("sock_inode_cache", 768...)`.
+   - Result: 832-byte Slab cache is ready.
+
+2. `register_filesystem(&sock_fs_type)`:
+   - Registers "sockfs" with the VFS list.
+   - Result: Visible in /proc/filesystems.
+
+3. `kern_mount(&sock_fs_type)`:
+   - Allocates Superblock and VFSmount.
+   - Wires `sb->s_op = &sockfs_ops`.
+   - Result: `sock_mnt` global variable populated.
+
+4. `netfilter_init()`:
+   - Initializes the packet filtering framework.
+   - Call verified at `sock_init+209`.
+
+5. `ptp_classifier_init()`:
+   - Initializes Precision Time Protocol packet classification.
+   - Call verified at `sock_init+224`.
+
+STATE AFTER sock_init():
+- A specialized memory pool exists.
+- A virtual filesystem exists to label objects.
+- `sock_mnt` is the root anchor for all future socket allocations.
 
 DERIVATION: WHY MOUNT & WIRE? (VFS DISPATCH)
   Problem: Sockets need inodes, but have no disk.
