@@ -132,12 +132,12 @@ LAYER 1: KERNEL STRUCTURES (SOURCE CODE)
 ======================================================================
 
 DERIVATION OF SOURCE IDENTITY:
-01. Authorship: Generic structures (Interfaces) defined by VFS architects; Instances (Impls) by Net devs.
-02. Syntax Logic: C uses 'structs' with Function Pointers to emulate Polymorphism.
+01. Authorship: Generic structures defined by VFS architects; Instances by Net devs.
+02. Syntax Logic: C uses 'structs' containing Function Pointers to allow swappable behavior.
 03. Naming Convention:
-    - 'sock_fs_type': The Type Definition (Class Metadata).
-    - 'sockfs_ops': The Operations Table (Virtual Method Table).
-    - 'sockfs_': Prefix ensures global namespace uniqueness.
+    - 'sock_fs_type': The Definition structure for this filesystem.
+    - 'sockfs_ops': The Operations Table containing function pointers.
+    - 'sockfs_': Prefix prevents symbol collisions in the global link space.
 04. State: At this layer, these are text blueprints. They have no memory address yet.
 
     [Source Code: Text Files]
