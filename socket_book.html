@@ -124,6 +124,7 @@ struct vfsmount {
     struct dentry *mnt_root;        /*  0   8 */
     struct super_block *mnt_sb;     /*  8   8 */
     int mnt_flags;                  /* 16   4 */
+    struct mnt_idmap *mnt_idmap;    /* 24   8 */
 };
 
 struct super_block {
@@ -334,9 +335,9 @@ DERIVATION: WHY SLAB ALLOCATION?
     - Result: Zero fragmentation, instant retrieval.
   
   Real Data Calculation:
-    Active Sockets: 2099 (from /proc/slabinfo)
+    Active Sockets: 2353 (from /proc/slabinfo)
     Object Size: 832 bytes
-    Memory Usage: 2099 × 832 = 1,746,368 bytes (1.66 MB)
+    Memory Usage: 2353 × 832 = 1,957,696 bytes (1.87 MB)
 
 DERIVATION: WHY 64-BYTE ALIGNMENT (SLAB_HWCACHE_ALIGN)?
   Hardware Constraint: CPU cache lines are 64 bytes.
@@ -455,8 +456,10 @@ struct vfsmount {
     struct dentry *            mnt_root;             /*  0   8 */
     struct super_block *       mnt_sb;               /*  8   8 */
     int                        mnt_flags;            /* 16   4 */
+    /* holes: 1, sum holes: 4 */
+    struct mnt_idmap *         mnt_idmap;            /* 24   8 */
 
-    /* size: 24, cachelines: 1, members: 3 */
+    /* size: 32, cachelines: 1, members: 4 */
 };
 
 ======================================================================
@@ -466,21 +469,21 @@ ELF SECTIONS
 $ readelf -S /boot/vmlinuz-6.14.0-37-generic | grep -E "\.text|\.data|\.bss"
   .text     PROGBITS <span class="addr">ffffffff81000000</span>  00200000
   .data     PROGBITS <span class="addr">ffffffff83600000</span>  02800000
-  .bss      NOBITS   <span class="addr">ffffffff83a9f000</span>  02e00000
+  .bss      NOBITS   <span class="addr">ffffffff83fb1000</span>  033b1000
 
 sock_fs_type @ <span class="addr">0xffffffff839c2dc0</span> → in .data (initialized)
 sockfs_ops   @ <span class="addr">0xffffffff8276e740</span> → in .data (initialized)
-sock_mnt     @ <span class="addr">0xffffffff83a767a0</span> → in .bss (zero-init, set at boot)
+sock_mnt     @ <span class="addr">0xffffffff83a767a0</span> → in .data (offset 0x4767a0 inside .data)
 
 ======================================================================
 SLAB STATISTICS (RUNTIME)
 ======================================================================
 
 $ cat /proc/slabinfo | grep sock_inode
-sock_inode_cache  2099  2340  832  39  8 : tunables 0 0 0 : slabdata 60 60 0
+sock_inode_cache    2353   2652    832   39    8 : tunables 0 0 0 : slabdata 68 68 0
 
-Active objects: 2099
-Total objects:  2340
+Active objects: 2353
+Total objects:  2652
 Object size:    832 bytes
 Per slab:       39 objects
 Slab order:     8 pages
