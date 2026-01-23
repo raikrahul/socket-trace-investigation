@@ -132,6 +132,15 @@ PROOF OF VFS SCALING (Function Pointers vs. Conditionals):
 LAYER 1: KERNEL STRUCTURES (SOURCE CODE)
 ======================================================================
 
+DERIVATION OF SOURCE IDENTITY (The "Why" and "Who"):
+01. Authorship: Generic structures (Interfaces) defined by VFS architects; Instances (Impls) by Net devs.
+02. Syntax Logic: C uses 'structs' with Function Pointers to achieve Polymorphism without Classes.
+03. Naming Convention:
+    - 'sock_fs_type': The Type Definition (Class Metadata).
+    - 'sockfs_ops': The Operations Table (Virtual Method Table).
+    - 'sockfs_': Prefix ensures global namespace uniqueness in the monolithic binary.
+04. State: At this layer, these are text blueprints. They have no memory address yet.
+
   struct file_system_type {
       const char *name;                              /*  0    8 */
       int fs_flags;                                  /*  8    4 */
@@ -189,7 +198,7 @@ THE OPERATIONS TABLE: super_operations (net/socket.c)
   };
 
 LOCATION IN BINARY: nm vmlinux | grep sockfs_ops
-  ffffffff8276e500 r sockfs_ops     /* r = read-only data section */
+  ffffffff8276e740 r sockfs_ops     /* r = read-only data section */
 
 FUNCTION POINTER PROVENANCE: alloc_inode
 
