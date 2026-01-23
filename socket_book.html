@@ -217,6 +217,14 @@ EXECUTION OF sock_init():
      - Verified Address: `0xffffffff83a767a0`.
      * AXIOM (WHY?): GLOBAL STATE. When a user calls `socket()`, the kernel needs an instant reference to this virtual filesystem's root. Searching for it would be slow. Storing the pointer in a global variable allows the CPU to load it in ONE instruction (`mov rip+offset`), enabling raw speed.
 
+  4. `netfilter_init()`:
+     - Verified Address: `0xffffffff83b9d750`.
+     * AXIOM (WHY?): TRAFFIC CONTROL. The kernel needs hooks to inspect/drop/modify packets (Firewalling) before they reach the sockets. This initializes the tables (iptables/nftables) that sockets will traverse.
+
+  5. `ptp_classifier_init()`:
+     - Verified Address: `0xffffffff83b9cec0`.
+     * AXIOM (WHY?): PRECISE TIME. Financial and scientific apps need nanosecond-level packet timestamping. This initializes the BPF classifiers that tag packets with hardware timestamps at the NIC level.
+
 
 ----------------------------------------------------------------------
 
@@ -293,9 +301,12 @@ $ readelf -S /boot/vmlinuz... | grep -E "\.data"
 
 $ pahole -C socket_alloc /boot/vmlinuz...
 struct socket_alloc {
-    struct socket  socket __attribute__((__aligned__(64))); /*   0   128 */
-    struct inode   vfs_inode __attribute__((__aligned__(8))); /* 128   624 */
-    /* size: 768 */
+    struct socket socket __attribute__((__aligned__(64))); /*     0   128 */
+    /* --- cacheline 2 boundary (128 bytes) --- */
+    struct inode vfs_inode __attribute__((__aligned__(8))); /*   128   624 */
+
+    /* size: 768, cachelines: 12, members: 2 */
+    /* padding: 16 */
 };
 
 ----------------------------------------------------------------------
@@ -307,6 +318,8 @@ $ gdb -batch -ex "disassemble sock_init" ...
    ...
    mov    %rax,-0x1254d9(%rip)  # Store in sock_mnt
    # Verified Target: 0xffffffff83a767a0
+   call   0xffffffff83b9d750    # <netfilter_init> (+209)
+   call   0xffffffff83b9cec0    # <ptp_classifier_init> (+224)
 
 ----------------------------------------------------------------------
 
