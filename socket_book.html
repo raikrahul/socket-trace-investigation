@@ -116,6 +116,27 @@ STEP B: LINKING (ld)
   - Action: LD writes `0xffffffff821cc3f0` into the first 8 bytes of `sockfs_ops`.
   - Result: The function pointer is physically wired before boot.
 
+STEP C: RESOLVING EXTERNAL DEPENDENCIES (The Kernel Map)
+  `socket.o` is not a standalone island. It relies on the Kernel Core (VFS & MMU).
+  The Linker resolves these undefined symbols to absolute addresses (Verified via System.map).
+
+  1. VFS INTEGRATION (To exist in the hierarchy):
+     - `register_filesystem` @ `0xffffffff817f6c00`
+       * Why: To add "sockfs" to the global list (/proc/filesystems).
+     - `kern_mount` @ `0xffffffff817fa260`
+       * Why: To create the `sock_mnt` anchor point.
+     - `new_inode_pseudo` @ `0xffffffff817f2bf0`
+       * Why: To allocate the "Base Class" (inode) for our socket object.
+
+  2. MEMORY MANAGEMENT (To exist physically):
+     - `kmem_cache_create` (@ `0xffffffff816cc730` as `__kmem_cache_create_args`)
+       * Why: To reserve the specialized 832-byte slab pool.
+     - `kmem_cache_alloc` (@ `0xffffffff8173afb0` as `kmem_cache_alloc_noprof`)
+       * Why: To grab a physical object from that pool at runtime.
+
+  * Implication: `net/socket.c` is hardwired to `fs/super.c` and `mm/slub.c` by these addresses.
+
+
 ----------------------------------------------------------------------
 
 PHASE 3: BOOT (INITIALIZATION)
