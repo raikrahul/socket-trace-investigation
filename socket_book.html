@@ -195,14 +195,14 @@ FUNCTION POINTER PROVENANCE: alloc_inode
 
   Who created it: Kernel programmer at net/socket.c
   What it points to: struct inode *sock_alloc_inode(struct super_block *)
-                     Code address: 0xffffffff817f2a60 (from nm output)
+                     Code address: 0xffffffff821ccda0 (from nm output)
   Memory validity: sock_alloc_inode is kernel code, address known after linking
   Who validates it: Linker (ld) during vmlinux creation
   When valid: After kernel image is linked (before boot)
 
 At runtime, when the kernel needs to allocate an inode for a socket, it will
 follow this chain:
-  1. Load sb->s_op (points to sockfs_ops at 0xffffffff8276e500)
+  1. Load sb->s_op (points to sockfs_ops at 0xffffffff8276e740)
   2. Load sb->s_op[0] (first entry, alloc_inode pointer)
   3. Call that function pointer: sock_alloc_inode
 
@@ -246,19 +246,43 @@ INITIALIZATION 2: Mount Filesystem (kern_mount)
       ...
   }
 
-Inside kern_mount, the super_block is wired:
-  sb->s_op = &sockfs_ops  /* Offset 48 in super_block structure */
+WHAT KERN_MOUNT DOES:
+01. Allocates a 'vfsmount' structure (mount point metadata).
+02. Allocates a 'super_block' structure (filesystem metadata).
+03. Calls 'sockfs_init_fs_context' to set up the context.
+04. Calls 'mount_pseudo()' to wire the 'super_block' into the 'vfsmount'.
+05. Returns the 'vfsmount' pointer to the 'sock_mnt' global variable.
 
+POINTER PROVENANCE: sock_mnt (vfsmount)
+----------------------------------------------------------------------
+Who created it: kern_mount() function at boot.
+What it points to: struct vfsmount (metadata for the sockfs mount).
+Memory validity: YES - Allocated from kernel heap during boot.
+Who validates it: kern_mount ensuring the SB is fully initialized.
+When valid: After sock_init() completes its boot-time execution.
+How used: Loaded via RIP-relative offset 0x18aa3a3 in sock_alloc().
+
+POINTER PROVENANCE: sb->s_op
+----------------------------------------------------------------------
+Who created it: mount_pseudo() during kern_mount.
+Points to: sockfs_ops at 0xffffffff8276e740 (Real Binary Address).
+Memory validity: YES - sockfs_ops resides in the read-only .data section.
+Who validates it: Compiler/Linker during the vmlinux build phase.
+When valid: At link-time (before the kernel even exists as a process).
+How used: Indirectly called by the VFS to allocate the centaur object.
+
+REAL MEMORY LAYOUT (Verified by pahole):
+----------------------------------------------------------------------
 The vfsmount contains:
   +8 (mnt_sb): pointer to super_block
-  
+
 The super_block contains:
   +48 (s_op): pointer to super_operations (sockfs_ops)
 
-sockfs_ops contains:
-  +0 (alloc_inode): pointer to sock_alloc_inode function
-  +8 (drop_inode): pointer to generic_drop_inode function
-  +16 (statfs): pointer to sockfs_statfs function
+sockfs_ops @ 0xffffffff8276e740 contains:
+  +0  (alloc_inode): 0xffffffff821ccda0 (sock_alloc_inode)
+  +8  (destroy_inode): 0x0 (NULL)
+  +16 (free_inode): 0xffffffff821ccd60 (sock_free_inode)
 
 ======================================================================
 LAYER 4: RUNTIME EXECUTION (USER CALLS socket())
@@ -315,7 +339,7 @@ The following disassembly shows the key instructions (simplified):
       Calls: alloc_inode(sb)
       Inside alloc_inode:
         Load: RAX = sb->s_op (at offset 48 in super_block)
-        RAX now points to sockfs_ops at 0xffffffff8276e500
+        RAX now points to sockfs_ops at 0xffffffff8276e740
         Call: (*RAX)(sb)  or  call [RAX]
               This jumps to sockfs_ops[0] = sock_alloc_inode
 
@@ -357,12 +381,12 @@ ASSEMBLY ARGUMENT PROVENANCE SUMMARY:
   Offset 48 (super_block.s_op):
     Defined by: Compiler from struct super_block in linux/fs.h
     Set at: Boot time by mount_pseudo()
-    Contains: pointer to sockfs_ops (0xffffffff8276e500)
+    Contains: pointer to sockfs_ops (0xffffffff8276e740)
   
   Offset 0 in sockfs_ops (alloc_inode):
     Defined by: Compiler from struct super_operations in linux/fs.h
     Set at: Link time when sockfs_ops is initialized
-    Contains: pointer to sock_alloc_inode function (0xffffffff817f2a60)
+    Contains: pointer to sock_alloc_inode function (0xffffffff821ccda0)
   
   -0x80 (-128 in offset notation):
     Defined by: Compiler from struct socket_alloc in net/socket.h
@@ -381,7 +405,7 @@ When user calls socket(), the following POINTER CHAIN executes:
   ↓ RDI = RAX + 8 = vfsmount.mnt_sb = super_block pointer
   ↓ call new_inode_pseudo(RDI)
     ↓ alloc_inode(sb) called
-    ↓ RAX = sb + 48 = sb->s_op = sockfs_ops pointer (0xffffffff8276e500)
+    ↓ RAX = sb + 48 = sb->s_op = sockfs_ops pointer (0xffffffff8276e740)
     ↓ call [RAX] = call sockfs_ops[0] = sock_alloc_inode
       ↓ sock_alloc_inode(sb) called
       ↓ call kmem_cache_alloc(sock_inode_cachep)
