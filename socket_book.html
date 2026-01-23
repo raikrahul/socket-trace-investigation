@@ -152,6 +152,7 @@ EXECUTION OF sock_init():
      - Flags: `SLAB_HWCACHE_ALIGN` (align to 64 bytes).
      - Action: Pre-allocates empty Slab pages.
      - Result: 832-byte object pool ready.
+     * AXIOM (WHY?): PHYSICS & SPEED. `kmalloc` is general-purpose and slow (O(log N)). Sockets are high-frequency objects. A dedicated Slab allows O(1) allocation and 0% external fragmentation by strictly segregating 832-byte chunks.
 
   2. `kern_mount(&sock_fs_type)` (The Wiring):
      - Calls `sockfs_init_fs_context()` -> sets `ctx->ops = &sockfs_ops`.
@@ -159,10 +160,13 @@ EXECUTION OF sock_init():
      - Logic: `s->s_op = ctx->ops`.
      - Result: The Superblock now points to `sockfs_ops`.
      - Returns: `sock_mnt` (Global Anchor).
+     * AXIOM (WHY?): THE VFS CONTRACT. The entire kernel I/O subsystem (read/write/close) operates on *inodes*. Sockets are immaterial (no disk), but they must "look" like files to exist in Unix. `kern_mount` creates a "Virtual Disk" (RAM-based) so sockets can wear the "Inode" uniform and use existing system calls.
 
   3. `sock_mnt` Assignment:
      - The address of the new vfsmount is stored in the global variable `sock_mnt`.
      - Verified Address: `0xffffffff83a767a0`.
+     * AXIOM (WHY?): GLOBAL STATE. When a user calls `socket()`, the kernel needs an instant reference to this virtual filesystem's root. Searching for it would be slow. Storing the pointer in a global variable allows the CPU to load it in ONE instruction (`mov rip+offset`), enabling raw speed.
+
 
 ----------------------------------------------------------------------
 
