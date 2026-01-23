@@ -100,7 +100,7 @@
 WHAT HAPPENS WHEN YOU CALL socket(2)
 ======================================================================
 
-Execution of socket() is a deterministic O(1) retrieval of 768 bytes from a boot-sealed Slab cache, physically erasing user-registers to regain logic-pointers via RIP-relative centaur arithmetic.
+Execution of socket() retrieves a 768-byte object from a specific Slab cache. It uses RIP-relative addressing to locate kernel globals and overwrites user registers to setup internal function calls.
 
 ======================================================================
 AXIOM 0: C STRUCTURES, POINTERS, AND FUNCTION POINTERS
@@ -125,14 +125,14 @@ PROOF OF VFS SCALING (Function Pointers vs. Conditionals):
 02. Live kernel data (nm vmlinux) proves 'sockfs_ops' at ffffffff8276e740 wires 'sock_alloc_inode' directly into the superblock's 's_op' handle.
 03. Without this, adding a filesystem (e.g., XFS) would require manual modification of the kernel core to insert 'if (sb->type == XFS)', forcing a maintainability bottleneck.
 04. Pointer-based dispatch allows the kernel to scale to N filesystems (ext4, nfs, btrfs, sockfs) with zero change to the core allocation logic.
-05. Verification: 'cat /proc/filesystems' shows 30+ logic sets executing through the same generic bridge via different memory addresses.
+05. Verification: 'cat /proc/filesystems' shows 30+ filesystem types executing through the same function pointer.
 
 ======================================================================
 LAYER 1: KERNEL STRUCTURES (SOURCE CODE)
 ======================================================================
 
 DERIVATION OF SOURCE IDENTITY:
-01. Authorship: Generic structures defined by VFS architects; Instances by Net devs.
+01. Origin: Generic structures ('file_system_type') are defined in VFS headers. Specific instances ('sock_fs_type') are defined in net/socket.c.
 02. Syntax Logic: C uses 'structs' containing Function Pointers to allow swappable behavior.
 03. Naming Convention:
     - 'sock_fs_type': The Definition structure for this filesystem.
@@ -279,8 +279,10 @@ INITIALIZATION 1: Create Slab Cache (init_inodecache)
       return 0;
   }
 
-THE SLAB REASON:
-The sock_inode_cachep is created at boot because allocating 768-byte objects from general-purpose memory would incur O(N) fragmentation costs. The Slab allocator pre-carves 4KB pages into exactly 39 objects of 832 bytes (768 data + 64 accounting).
+THE SLUB CONFIGURATION:
+The kernel is configured with CONFIG_SLUB=y (verified via /boot/config).
+SLUB avoids queue overhead by using page-based freelists.
+net/socket.c line 339 invokes this allocator for "sock_inode_cache".
 
     [Slab Page: 4096 Bytes]
     +-----------------------------------------------------------------------+
@@ -288,22 +290,24 @@ The sock_inode_cachep is created at boot because allocating 768-byte objects fro
     +-----------------------------------------------------------------------+
     |<-  768 Bytes ->|
 
-DERIVATION OF THE O(1) ALLOCATOR (Why it is fast):
-01. Axiom: Searching a generic heap for a 768-byte hole takes O(N) time (fragmentation).
-02. Constraint: socket(2) is a high-frequency call; O(N) is unacceptable.
-03. Solution: Pre-slice memory into fixed-size blocks (Slabs).
-04. Axiom: A Stack (LIFO) data structure supports 'pop' in O(1) time.
-05. Implementation: The kernel maintains a per-CPU stack of free 832-byte blocks.
-06. Action: sock_alloc_inode() executes 'pop', moving the stack pointer by 1.
-07. Result: Allocation time is constant (O(1)), regardless of memory size.
+DERIVATION OF O(1) ALLOCATION (The SLUB Mechanism):
+01. State: The kernel maintains a 'freelist' pointer in a high-speed per-CPU register.
+02. Input: The freelist pointer holds the address of the first available 832-byte block.
+03. Action: sock_alloc_inode() reads this address (e.g., 0xffff888100203000).
+04. Update: The 'next' pointer (stored in the external 64-byte zone) becomes the new freelist head.
+05. Cost: One Memory Read + One Memory Write.
+06. Result: Zero search loops. Constant time execution.
 
-DERIVATION OF CACHE ALIGNMENT (Why it is 832 bytes, not 768):
-01. Axiom: CPU fetches memory in 64-byte chunks (Cache Lines). verified by 'getconf LEVEL1_DCACHE_LINESIZE'.
-02. Physics: If an object straddles two 64-byte lines, the CPU must fetch twice (2x latency).
-03. Math: 768 bytes is perfectly aligned (768 / 64 = 12 lines).
-04. Overhead: The kernel adds 64 bytes of metadata for tracking. 768 + 64 = 832 bytes.
-05. Verification: 832 / 64 = 13 lines. Integer result means Zero straddling.
-06. Conclusion: The geometry 832 is physically tuned to the silicon's fetch width.
+DERIVATION OF THE 832-BYTE GEOMETRY (Exact Source Derivation):
+01. Source: net/socket.c:339 calls kmem_cache_create with sizeof(struct socket_alloc) = 768.
+02. Source: net/socket.c:346 passes 'init_once' (Constructor).
+03. Constraint: Constructor implies object content works as initialized state.
+04. Constraint: Allocator cannot overwrite object content with a free-pointer.
+05. Mechanism: Allocator expects external metadata (8-byte pointer on x86_64).
+06. Math: Intermediate Size = 768 + 8 = 776 bytes.
+07. Source: net/socket.c:342 passes flag SLAB_HWCACHE_ALIGN (Align to 64 bytes).
+08. Math: Next multiple of 64 after 776 is 832 (13 * 64).
+09. Result: 832 bytes is the mathematically forced size, not a choice.
 
 VERIFICATION (Real-time Data):
 $ sudo cat /proc/slabinfo | grep sock_inode_cache
@@ -325,7 +329,7 @@ DERIVATION: THE MOUNT SEQUENCE (Why it exists):
 02. Constraint: An inode must belong to a Superblock (Filesystem instance).
 03. Action: 'Alloc Superblock' creates the container for these inodes.
 04. Constraint: A Superblock needs a Mount Point to be visible/accessible.
-05. Action: 'Alloc vfsmount' creates the handle that code can hold onto.
+05. Action: 'Alloc vfsmount' creates the reference object used by kernel functions.
 06. Requirement: The Superblock needs to know HOW to behave (Operations).
 07. Action: 'Wire s_op' connects the generic SB to specific 'sockfs_ops'.
 08. Result: 'sock_mnt' is the single global root that anchors all 768-byte socket objects to the VFS.
@@ -391,6 +395,10 @@ CALLING CONVENTION (x86-64 syscall):
   
   sock_create uses the arguments to determine socket type, then:
   
+  Calls __sock_create()
+  
+  __sock_create verifies security permissions and then:
+  
   Calls sock_alloc()     <<< THESE ARGUMENTS ARE ABOUT TO BE DESTROYED
   
 At this point, RDI, RSI, RDX still hold the user arguments. But sock_alloc()
@@ -401,8 +409,8 @@ THE EXECUTION OF sock_alloc():
 
 The following disassembly shows the key instructions (simplified):
 
-  Instruction +12: mov 0x18aa3a3(%rip), %rax
-    Calculation: RIP + 0x18aa3a3 = 0xffffffff817f25dd + 0x18aa3a3
+  Instruction +6: mov 0x18aa3a3(%rip), %rax
+    Calculation: RIP + 0x18aa3a3 = 0xffffffff821cc3fd + 0x18aa3a3
                                   = 0xffffffff83a767a0
     Load: RAX = [0xffffffff83a767a0] = value of sock_mnt
     After: RAX points to the vfsmount structure
@@ -436,7 +444,9 @@ The following disassembly shows the key instructions (simplified):
       [0-127]:    socket structure
       [128-767]:  inode structure
     Actually: inode is at the END, socket is embedded BEFORE it
-      (socket_alloc structure: socket at offset 0, inode at offset sizeof(socket))
+      (socket_alloc structure: socket at offset 0, inode at offset 128)
+      AXIOM: sock_alloc_inode() added 128 to the allocated block.
+      sock_alloc() must subtract 128 to reclaim the socket.
 
   Instruction +36: lea -0x80(%rax), %r12
     Address: RAX - 128 (0x80 = 128 in hex)
@@ -512,11 +522,11 @@ RESULT: 768-byte block allocated and returned
   #20 sock_alloc: return R12
 
 VERIFICATION COMMANDS:
-  pahole -C socket_alloc vmlinux              # Struct layout
-  nm vmlinux | grep -E "sockfs_ops|sock_mnt"  # Symbol addresses
-  gdb -batch -ex "disassemble sock_alloc"     # Machine code
-  cat /proc/slabinfo | grep sock_inode        # Live slab stats
-  cat /proc/filesystems | grep sockfs         # FS registered
+  pahole -C socket_alloc /boot/vmlinux-6.14.0-37-generic
+  nm /boot/vmlinux-6.14.0-37-generic | grep -E "sockfs_ops|sock_mnt"
+  gdb -batch -ex "disassemble sock_alloc" /boot/vmlinux-6.14.0-37-generic
+  cat /proc/slabinfo | grep sock_inode
+  cat /proc/filesystems | grep sockfs
             </code></pre>
     </div>
 
@@ -679,15 +689,15 @@ sock_init+93: mov    $0x300, %esi     # 0x300 = 768 decimal
 
 PROOF: sock_init() allocates cache with 768-byte objects (sizeof socket_alloc).
 
-DERIVATION OF THE NUMBER 768 (SEALED SIZE):
+DERIVATION OF THE 768-BYTE CONSTANT:
 ----------------------------------------------------------------------
 01. struct socket size    = 128 bytes (proven by pahole)
 02. struct inode size     = 624 bytes (proven by pahole)
 03. Raw data sum          = 128 + 624 = 752 bytes
-04. CPU Cache Line (L1)   = 64 bytes
-05. Alignment Calculation = ceil(752 / 64) * 64
-06. Result                = 12 * 64 = 768
-∴ The 768-byte "sealed" size ensures cache-coherency for the centaur object.
+04. Alignment (socket)    = 64 bytes (struct socket attribute)
+05. Alignment (inode)     = 8 bytes  (struct inode attribute)
+06. Padding               = 16 bytes (to align 752 to 64)
+07. Result                = 768 bytes.
 
 $ gdb -batch -ex "disassemble sock_init" /boot/vmlinuz-6.14.0-37-generic | \
   grep -A 2 "mov.*sock_mnt"
@@ -747,10 +757,11 @@ BREAKDOWN:
   Objects per slab: 39 (fits in 4KB page)
   Slab count: 60 (pages allocated)
 
-MATH VERIFICATION:
-  832 * 39 = 32448 bytes ≈ multiple 4KB pages
-  768 (socket) + 624 (inode) = 1392 bytes (without alignment)
-  832 bytes with alignment and accounting
+MATH VERIFICATION (832 BYTES):
+  768 bytes (Object) + 8 bytes (Free Pointer due to Constructor) = 776 bytes
+  776 bytes aligned to 64 bytes (SLAB_HWCACHE_ALIGN) = 832 bytes
+  832 * 39 objects = 32448 bytes
+  Allocated Slab Order: 3 (32768 bytes / 8 pages)
 
 ================================================================================
 STAGE 9: REGISTER STATE VERIFICATION (kprobes)
