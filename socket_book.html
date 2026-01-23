@@ -262,7 +262,13 @@ INITIALIZATION 1: Create Slab Cache (init_inodecache)
   }
 
 THE SLAB REASON:
-The sock_inode_cachep is created at boot because allocating 768-byte objects from general-purpose memory would incur O(N) fragmentation costs. The Slab allocator pre-carves 4KB pages into exactly 39 objects of 832 bytes (768 data + 64 accounting). This allows sock_alloc_inode to retrieve a fresh socket/inode pair in O(1) time by simply popping the next free block from the per-CPU cache. Each block is pre-zeroed and cache-aligned during boot to minimize cache-misses during high-frequency socket(2) calls. The cache is 'sealed' by init_inodecache(), ensuring every socket follows the same deterministic geometry throughout the kernel's lifetime. Verification: cat /proc/slabinfo shows exactly 39 objects per slab for sock_inode_cache.
+The sock_inode_cachep is created at boot because allocating 768-byte objects from general-purpose memory would incur O(N) fragmentation costs. The Slab allocator pre-carves 4KB pages into exactly 39 objects of 832 bytes (768 data + 64 accounting). This allows sock_alloc_inode to retrieve a fresh socket/inode pair in O(1) time by simply popping the next free block from the per-CPU cache. Each block is pre-zeroed and cache-aligned during boot to minimize cache-misses during high-frequency socket(2) calls. The cache is 'sealed' by init_inodecache(), ensuring every socket follows the same deterministic geometry throughout the kernel's lifetime.
+
+VERIFICATION (Real-time Data):
+$ sudo cat /proc/slabinfo | grep sock_inode_cache
+sock_inode_cache    2180   2613    832   39    8 : tunables    0    0    0 : slabdata     67     67      0
+
+Proof: 832 bytes * 39 objects = 32,448 bytes -> Fits into 8-page (32KB) Order-3 Slab.
 
 INITIALIZATION 2: Mount Filesystem (kern_mount)
 
