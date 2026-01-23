@@ -148,11 +148,50 @@ FUNCTION POINTERS (address of executable code):
   A function pointer stores the ADDRESS of a function. Calling it via the
   pointer jumps to that address and executes code there.
 
-KEY INSIGHT: Indirection through function pointers lets kernel code call
-different functions without recompilation. Example: alloc_inode is stored
-in super_operations.alloc_inode. When kernel calls sb->s_op->alloc_inode(),
-it jumps to whatever function is pointed to, which could be sock_alloc_inode
-for sockfs, or ext4_alloc_inode for ext4, etc.
+WITHOUT FUNCTION POINTERS (hypothetical without VFS abstraction):
+
+The kernel would need compiled-in knowledge of every filesystem. Example:
+
+  /* In the kernel binary, hardcoded */
+  if (sb->type == SOCKFS)
+      return sock_alloc_inode(sb);
+  else if (sb->type == EXT4)
+      return ext4_alloc_inode(sb);
+  else if (sb->type == BTRFS)
+      return btrfs_alloc_inode(sb);
+  else if (sb->type == NFS)
+      return nfs_alloc_inode(sb);
+  ...
+
+To add a new filesystem (e.g., XFS), you would need to:
+  1. Modify fs/inode.c to add "else if (sb->type == XFS)"
+  2. Recompile the kernel
+  3. Reboot
+  
+This would mean the kernel binary can ONLY support filesystems compiled into it.
+
+WITH FUNCTION POINTERS (actual VFS design):
+
+The super_operations table is filesystem-agnostic:
+
+  struct inode *alloc_inode(struct super_block *sb) {
+      return sb->s_op->alloc_inode(sb);  /* INDIRECT CALL */
+  }
+
+At runtime, sb->s_op points to whichever operations table was wired at mount time:
+  - sockfs mounts: sb->s_op = &sockfs_ops
+  - ext4 mounts: sb->s_op = &ext4_super_ops
+  - btrfs mounts: sb->s_op = &btrfs_super_ops
+
+New filesystems can be added as modules WITHOUT recompiling the kernel.
+
+PROOF: Loading sockfs module at runtime works because of this design:
+
+  $ insmod fs/sockfs.ko
+  
+The kernel binary unchanged. The module provides its own sockfs_ops table.
+At mount time, sb->s_op is wired to point to it.
+The generic alloc_inode() call works immediately without recompilation.
 
 ======================================================================
 LAYER 1: KERNEL STRUCTURES (SOURCE CODE)
