@@ -2,102 +2,101 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <title>The Physical Layout of socket() in Linux: Analytical & Forensic Edition</title>
+  <meta charset="UTF-8">
+  <title>The Physical Layout of socket() in Linux: Analytical & Forensic Edition</title>
 
-    <!-- Highlight.js CSS (GitHub Dark Theme) -->
-    <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+  <!-- Highlight.js CSS (GitHub Dark Theme) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
 
-    <style>
-        :root {
-            --bg-color: #fff;
-            --text-color: #000;
-            --accent-color: #c00;
-            --border-color: #e0e0e0;
-            --font-main: 'Charter', 'Georgia', serif;
-            --font-header: 'Helvetica Neue', sans-serif;
-            --font-mono: 'SF Mono', 'Consolas', monospace;
-        }
+  <style>
+    :root {
+      --bg-color: #fff;
+      --text-color: #000;
+      --accent-color: #c00;
+      --border-color: #e0e0e0;
+      --font-main: 'Charter', 'Georgia', serif;
+      --font-header: 'Helvetica Neue', sans-serif;
+      --font-mono: 'SF Mono', 'Consolas', monospace;
+    }
 
-        * {
-            box-sizing: border-box;
-        }
+    * {
+      box-sizing: border-box;
+    }
 
-        body {
-            background: #fff;
-            color: var(--text-color);
-            font-family: var(--font-mono);
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-        }
+    body {
+      background: #fff;
+      color: var(--text-color);
+      font-family: var(--font-mono);
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
 
-        .master-container {
-            display: flex;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-        }
+    .master-container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
 
-        .academic-pane {
-            flex: 1;
-            padding: 40px;
-            border-right: 1px solid #000;
-            overflow: auto;
-        }
+    .academic-pane {
+      flex: 1;
+      padding: 40px;
+      border-right: 1px solid #000;
+      overflow: auto;
+    }
 
-        .forensic-pane {
-            flex: 1;
-            padding: 40px;
-            overflow: auto;
-        }
+    .forensic-pane {
+      flex: 1;
+      padding: 40px;
+      overflow: auto;
+    }
 
-        pre {
-            white-space: pre-wrap;
-            font-family: var(--font-mono);
-            line-height: 1.4;
-            border: none;
-            background: transparent;
-            padding: 0;
-            margin: 0;
-        }
+    pre {
+      white-space: pre-wrap;
+      font-family: var(--font-mono);
+      line-height: 1.4;
+      border: none;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+    }
 
-        .addr {
-            color: #000;
-            font-weight: 600;
-        }
+    .addr {
+      color: #000;
+      font-weight: 600;
+    }
 
-        .forensic-pane .addr {
-            color: #1f6feb;
-        }
+    .forensic-pane .addr {
+      color: #1f6feb;
+    }
 
-        /* HIGHLIGHT.JS INTEGRATION */
-        pre {
-            margin: 0;
-            padding: 10px;
-            background: #282c34;
-            border-radius: 4px;
-            overflow-x: auto;
-        }
+    /* HIGHLIGHT.JS INTEGRATION */
+    pre {
+      margin: 0;
+      padding: 10px;
+      background: #282c34;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
 
-        code {
-            font-family: var(--font-mono);
-            display: block;
-            padding: 0;
-            background: transparent;
-            color: #abb2bf;
-        }
-    </style>
+    code {
+      font-family: var(--font-mono);
+      display: block;
+      padding: 0;
+      background: transparent;
+      color: #abb2bf;
+    }
+  </style>
 </head>
 
 <body>
 
-    <div class="master-container">
+  <div class="master-container">
 
-        <!-- LEFT SIDE: ANALYTICAL RESEARCH PAPER (THEORY) -->
-        <div class="academic-pane">
-            <pre><code class="language-c">
+    <!-- LEFT SIDE: ANALYTICAL RESEARCH PAPER (THEORY) -->
+    <div class="academic-pane">
+      <pre><code class="language-c">
 WHAT HAPPENS WHEN YOU CALL socket(2)
 ======================================================================
 
@@ -132,14 +131,23 @@ PROOF OF VFS SCALING (Function Pointers vs. Conditionals):
 LAYER 1: KERNEL STRUCTURES (SOURCE CODE)
 ======================================================================
 
-DERIVATION OF SOURCE IDENTITY (The "Why" and "Who"):
+DERIVATION OF SOURCE IDENTITY:
 01. Authorship: Generic structures (Interfaces) defined by VFS architects; Instances (Impls) by Net devs.
-02. Syntax Logic: C uses 'structs' with Function Pointers to achieve Polymorphism without Classes.
+02. Syntax Logic: C uses 'structs' with Function Pointers to emulate Polymorphism.
 03. Naming Convention:
     - 'sock_fs_type': The Type Definition (Class Metadata).
     - 'sockfs_ops': The Operations Table (Virtual Method Table).
-    - 'sockfs_': Prefix ensures global namespace uniqueness in the monolithic binary.
+    - 'sockfs_': Prefix ensures global namespace uniqueness.
 04. State: At this layer, these are text blueprints. They have no memory address yet.
+
+    [Source Code: Text Files]
+    +------------------+       +-------------------+
+    | file_system_type |------>| init_fs_context() |
+    +------------------+       +-------------------+
+             ^                          ^
+             | defines type             | defines behavior
+             |                          |
+        "sockfs" (Name)         sockfs_init_fs_context
 
   struct file_system_type {
       const char *name;                              /*  0    8 */
@@ -219,7 +227,17 @@ follow this chain:
 LAYER 2: COMPILATION & LINKING (REAL BINARY PROOFS)
 ======================================================================
 
-The compiler (gcc) converts net/socket.c into socket.o, encoding sock_fs_type.init_fs_context as a relocation placeholder. At link-time, ld resolves the final kernel layout, assigning sockfs_init_fs_context to address ffffffff821cccb0. The linker then patches the binary at ffffffff839c2dc0 (the address of sock_fs_type) with this absolute 64-bit address. Verification: nm vmlinux confirms both symbols are pinned to these specific memory cells in the .data and .text sections respectively. Proof: gdb x/gx 0xffffffff839c2dc0+16 reveals ffffffff821cccb0 is physically written into the binary.
+The compiler (gcc) converts net/socket.c into socket.o, encoding sock_fs_type.init_fs_context as a relocation placeholder. At link-time, ld resolves the final kernel layout, assigning sockfs_init_fs_context to address ffffffff821cccb0. The linker then patches the binary at ffffffff839c2dc0 (the address of sock_fs_type) with this absolute 64-bit address.
+
+    [socket.o: Relocatable Object]              [vmlinux: Static Executable]
+    +---------------------------+              +------------------------------+
+    | .text: [Placeholder Code] | --Linker-->  | .text: ffffffff821cccb0      |
+    | .data: [Relocation Entry] |              | .data: Ptr = ffffffff821cccb0|
+    +---------------------------+              +------------------------------+
+                                                              ^
+                                                              |
+    Verification: nm vmlinux confirms symbols are pinned to these specific memory cells.
+    Proof: gdb x/gx 0xffffffff839c2dc0+16 reveals ffffffff821cccb0 is physically written into the binary.
 
 ======================================================================
 RIP-RELATIVE ADDRESSING (How Global Data Is Loaded)
@@ -243,7 +261,7 @@ $2 = (struct inode *(*)(struct super_block *)) 0xffffffff821ccda0 <sock_alloc_in
 CERTIFICATION:
 01. 'sock_fs_type' (Filesystem Class) is physically hardwired to 'sockfs_init_fs_context' at offset 16.
 02. 'sockfs_ops' (VTable) is physically hardwired to 'sock_alloc_inode' at offset 0.
-∴ The logic path is sealed in silicon (disk) before power is applied.
+∴ The logic path is statically linked in the ELF binary before execution.
 
 ======================================================================
 LAYER 3: BOOT INITIALIZATION
@@ -262,7 +280,15 @@ INITIALIZATION 1: Create Slab Cache (init_inodecache)
   }
 
 THE SLAB REASON:
-The sock_inode_cachep is created at boot because allocating 768-byte objects from general-purpose memory would incur O(N) fragmentation costs. The Slab allocator pre-carves 4KB pages into exactly 39 objects of 832 bytes (768 data + 64 accounting). This allows sock_alloc_inode to retrieve a fresh socket/inode pair in O(1) time by simply popping the next free block from the per-CPU cache. Each block is pre-zeroed and cache-aligned during boot to minimize cache-misses during high-frequency socket(2) calls. The cache is 'sealed' by init_inodecache(), ensuring every socket follows the same deterministic geometry throughout the kernel's lifetime.
+The sock_inode_cachep is created at boot because allocating 768-byte objects from general-purpose memory would incur O(N) fragmentation costs. The Slab allocator pre-carves 4KB pages into exactly 39 objects of 832 bytes (768 data + 64 accounting).
+
+    [Slab Page: 4096 Bytes]
+    +-----------------------------------------------------------------------+
+    | [Socket+Inode] | [Socket+Inode] | ... (39 objs) ... | [Metadata (64B)]|
+    +-----------------------------------------------------------------------+
+    |<-  768 Bytes ->|
+
+This allows sock_alloc_inode to retrieve a fresh socket/inode pair in O(1) time by simply popping the next free block from the per-CPU cache. Each block is pre-zeroed and cache-aligned during boot to minimize cache-misses during high-frequency socket(2) calls. The cache is initialized by init_inodecache(), ensuring every socket follows the same deterministic geometry throughout the kernel's lifetime.
 
 VERIFICATION (Real-time Data):
 $ sudo cat /proc/slabinfo | grep sock_inode_cache
@@ -288,6 +314,13 @@ DERIVATION: THE MOUNT SEQUENCE (Why it exists):
 06. Requirement: The Superblock needs to know HOW to behave (Operations).
 07. Action: 'Wire s_op' connects the generic SB to specific 'sockfs_ops'.
 08. Result: 'sock_mnt' is the single global root that anchors all 768-byte socket objects to the VFS.
+
+    [sock_mnt (vfsmount)]     [Superblock]           [sockfs_ops]
+    +-------------------+    +--------------+      +-------------------+
+    | mnt_sb  ----------+--->| s_op  -------+----->| alloc_inode       |--+
+    +-------------------+    +--------------+      +-------------------+  |
+                                                           |              v
+                                                    sock_alloc_inode()
 
 POINTER PROVENANCE: sock_mnt (vfsmount)
 ----------------------------------------------------------------------
@@ -470,11 +503,11 @@ VERIFICATION COMMANDS:
   cat /proc/slabinfo | grep sock_inode        # Live slab stats
   cat /proc/filesystems | grep sockfs         # FS registered
             </code></pre>
-        </div>
+    </div>
 
-        <!-- RIGHT SIDE: FORENSIC MACHINE PROOFS (COMMANDS) -->
-        <div class="forensic-pane">
-            <pre><code class="language-bash">
+    <!-- RIGHT SIDE: FORENSIC MACHINE PROOFS (COMMANDS) -->
+    <div class="forensic-pane">
+      <pre><code class="language-bash">
 ================================================================================
 STAGE 0: KERNEL VERSION AND ENVIRONMENT VERIFICATION
 ================================================================================
@@ -812,10 +845,10 @@ AXIOMATIC DERIVATION: VFS SCALING VIA FUNCTION POINTERS
 11. Conclusion: The kernel becomes an O(1) dispatcher where N can grow to infinity without recompiling the bridge ✓.
 ∴ Scaling is a mathematical property of indirect addressing, not a choice ✓.
             </code></pre>
-        </div>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
-    <script>hljs.highlightAll();</script>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
 </body>
 
 </html>
