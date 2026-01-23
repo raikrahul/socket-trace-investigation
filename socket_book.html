@@ -759,6 +759,22 @@ CONCLUSION:
   
   The socket_alloc embedding and centaur arithmetic are not abstractions.
   They are physical facts of the Linux kernel, proven at every layer.
+
+================================================================================
+AXIOMATIC DERIVATION: VFS SCALING VIA FUNCTION POINTERS
+================================================================================
+01. Axiom: A CPU increments a number (RIP) to execute the next instruction ✓.
+02. Axiom: A 'Jump' (JMP/CALL) replaces RIP with a new number (Address) ✓.
+03. Observation: If a kernel supports N filesystems, it must choose 1 of N numbers ✓.
+04. Hypothetical (O(N)): Compare 'target_type' against N constants in a list ✓.
+05. Result (O(N)): Adding filesystem N+1 requires changing the central list ✗.
+06. Deduction: To avoid O(N) central changes, the number must be stored in the object ✓.
+07. Proof of Symbol: 'sock_alloc_inode' is located at address 0xffffffff821ccda0 ✓.
+08. Proof of Wiring: 'sockfs_ops' at 0xffffffff8276e740 stores that number at offset 0 ✓.
+09. Runtime Input: 'super_block->s_op' holds the address 0xffffffff8276e740 ✓.
+10. Computation: Load s_op → Load offset 0 of s_op → CALL results in 0xffffffff821ccda0 ✓.
+11. Conclusion: The kernel becomes an O(1) dispatcher where N can grow to infinity without recompiling the bridge ✓.
+∴ Scaling is a mathematical property of indirect addressing, not a choice ✓.
             </code></pre>
         </div>
     </div>
