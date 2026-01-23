@@ -97,6 +97,11 @@ THE BLUEPRINTS (net/socket.c):
          struct inode vfs_inode; /* Offset 128 */
      } __attribute__((aligned(64)));
 
+  4. The Global Anchor (State):
+     static struct vfsmount *sock_mnt;
+     /* The pointer to the mounted filesystem root */
+
+
 ----------------------------------------------------------------------
 
 PHASE 2: COMPILATION & LINKING (BINARY CONSTRUCTION)
