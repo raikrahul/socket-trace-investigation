@@ -228,6 +228,24 @@ RIP-RELATIVE ADDRESSING (How Global Data Is Loaded)
 At runtime, the instruction mov 0x18aa3a3(%rip), %rax retrieves the sock_mnt global variable. The CPU adds the sealed 32-bit offset 0x18aa3a3 to the address of the next instruction (0xffffffff821cc3fd). This sum yields 0xffffffff83a767a0, which is the exact address of sock_mnt in the .bss section. Using RIP-relative addressing ensures the kernel can load data in a single 7-byte instruction without needing a larger 12-byte absolute load. The linker computes this offset once during the final binary build based on the distance between the code and data segments. Verification: Disassembly of sock_alloc+6 confirms the machine code matches this distance exactly.
 
 ======================================================================
+PRE-BOOT LINKAGE VERIFICATION (gdb Proof from Disk)
+======================================================================
+Before a single instruction executes, the static binary "vmlinux" already contains the wired connections. We verify this by inspecting the file on disk, which proves the Compiler and Linker did their job.
+
+$ gdb -batch -ex "file vmlinux" \
+  -ex "print 'sock_fs_type'.init_fs_context" \
+  -ex "print 'sockfs_ops'.alloc_inode"
+
+OUTPUT:
+$1 = (int (*)(struct fs_context *)) 0xffffffff821cccb0 <sockfs_init_fs_context>
+$2 = (struct inode *(*)(struct super_block *)) 0xffffffff821ccda0 <sock_alloc_inode>
+
+CERTIFICATION:
+01. 'sock_fs_type' (Filesystem Class) is physically hardwired to 'sockfs_init_fs_context' at offset 16.
+02. 'sockfs_ops' (VTable) is physically hardwired to 'sock_alloc_inode' at offset 0.
+∴ The logic path is sealed in silicon (disk) before power is applied.
+
+======================================================================
 LAYER 3: BOOT INITIALIZATION
 ======================================================================
 
