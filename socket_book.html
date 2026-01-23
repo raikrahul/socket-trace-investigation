@@ -279,12 +279,15 @@ INITIALIZATION 2: Mount Filesystem (kern_mount)
       ...
   }
 
-WHAT KERN_MOUNT DOES:
-01. Allocates a 'vfsmount' structure (mount point metadata).
-02. Allocates a 'super_block' structure (filesystem metadata).
-03. Calls 'sockfs_init_fs_context' to set up the context.
-04. Calls 'mount_pseudo()' to wire the 'super_block' into the 'vfsmount'.
-05. Returns the 'vfsmount' pointer to the 'sock_mnt' global variable.
+DERIVATION: THE MOUNT SEQUENCE (Why it exists):
+01. Axiom: A socket needs an inode (VFS object).
+02. Constraint: An inode must belong to a Superblock (Filesystem instance).
+03. Action: 'Alloc Superblock' creates the container for these inodes.
+04. Constraint: A Superblock needs a Mount Point to be visible/accessible.
+05. Action: 'Alloc vfsmount' creates the handle that code can hold onto.
+06. Requirement: The Superblock needs to know HOW to behave (Operations).
+07. Action: 'Wire s_op' connects the generic SB to specific 'sockfs_ops'.
+08. Result: 'sock_mnt' is the single global root that anchors all 768-byte socket objects to the VFS.
 
 POINTER PROVENANCE: sock_mnt (vfsmount)
 ----------------------------------------------------------------------
