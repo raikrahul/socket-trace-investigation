@@ -4,6 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Deterministic Centaur: The Algebra of Socket Dispatch</title>
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
     <style>
         body {
             background: #000;
@@ -93,12 +95,12 @@
 <body>
     <div class="container">
         <div class="header">
-            <pre>
+            <pre><code class="language-plaintext">
 ================================================================================
                     DETERMINISTIC CENTAUR: THE ALGEBRA OF SOCKET DISPATCH
                     AN AXIOMATIC ANALYSIS OF THE VFS-TO-NET LOGIC BRIDGE
 ================================================================================
-            </pre>
+            </code></pre>
         </div>
 
         <div class="section-header">PART I: COMPILE-TIME SEAL (SYMBOLIC INVARIANCE)</div>
@@ -114,12 +116,12 @@
                     ✓.</div>
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-plaintext">
 # Physical Memory Law:
 (Addr A == 7) → (Addr A != 8) TRUE
 # Compiler Offset Law:
 Static Offsets = Compile-Time Bit Constants
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -133,13 +135,13 @@ Static Offsets = Compile-Time Bit Constants
                 06. Verification: `sizeof(struct socket_alloc)` = 768 (Exactly 12 cache line hauls) ✓.<br>
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-bash">
 $ pahole -C socket vmlinux # 128
 $ pahole -C inode vmlinux  # 624
 $ grep "CONFIG_X86_L1_CACHE_SHIFT" /boot/config
 CONFIG_X86_L1_CACHE_SHIFT=6 # 2^6=64
 $ pahole -C socket_alloc vmlinux # 768
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -151,7 +153,7 @@ $ pahole -C socket_alloc vmlinux # 768
                 10. Struct Algebra: `net_proto_family` offset derivation: [int(4B) + Pad(4B)] → `create` @ Offset 8 ✓.
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-bash">
 $ nm vmlinux | grep sockfs_ops
 ffffffff8276e740 d sockfs_ops
 # Struct Alignment Proof (DWARF):
@@ -160,7 +162,7 @@ struct net_proto_family {
     # 4 byte hole       # 4..7
     int (*create)(...); # 8..15
 }
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -173,11 +175,11 @@ struct net_proto_family {
                 14. Result: All pointers are shifted, but jump distances (logic laws) remain constant ✓.
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-bash">
 $ sudo grep sockfs_ops /proc/kallsyms
 ffffffffbbd6e740 d sockfs_ops (Live)
 ∴ 0xffffffffbbd6e740 - 0xffffffff8276e740 = 0x39600000
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -189,12 +191,12 @@ ffffffffbbd6e740 d sockfs_ops (Live)
                 18. Result: Physical RAM footprint = 768 (Object) + 64 (Moat) = 832 bytes per instance ✓.
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-bash">
 $ gdb -batch -ex "disassemble sock_init" vmlinux
 +93: mov $0x300,%esi # Payload size seal
 $ cat /proc/slabinfo | grep sock_inode
 sock_inode_cache ... 832 ... 
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -267,14 +269,14 @@ $ sudo gdb -batch -ex "disassemble sock_alloc" vmlinux
                 39. Installation: `sock_map_fd` installs socket into process FD table at `fdt->fd[3]` ✓.
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-plaintext">
 # Bidirectional Coupling (Source):
 socket->sk = struct sock* (net.h:125)
 sock->sk_socket = struct socket* (sock.h:438)
 # Full 6-Link Vector:
 fd[3] → struct file* → private_data →
 struct socket* → sk → sk_prot → tcp_prot
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -287,12 +289,12 @@ struct socket* → sk → sk_prot → tcp_prot
                 43. Efficiency Theorem: Hardware speedup of 5.87x achieved via direct symbolic anchoring ✓.
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-c">
 # Inetsw Logic (net/ipv4/af_inet.c):
 list_for_each_entry_rcu(answer, &inetsw[type], list)
 # Result: Bucket Search resolves collisions
 # between TCP, SCTP, and other stream types.
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -304,11 +306,11 @@ list_for_each_entry_rcu(answer, &inetsw[type], list)
                 47. Result: Mismatch (7:14 != 7:15) triggers `kmalloc(1408)` for ephemeral metadata block ✓.
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-c">
 File: fs/super.c: sget_fc()
 if (old->s_dev == target_dev) // 32-bit Scalar Check
 # Result: N instances point to 1 logic table.
-                </pre>
+                </code></pre>
             </div>
         </div>
 
@@ -324,22 +326,24 @@ if (old->s_dev == target_dev) // 32-bit Scalar Check
                 </div>
             </div>
             <div class="machine">
-                <pre>
+                <pre><code class="language-plaintext">
 Unit Cardinality: 768 Bytes
 Alignment: 12 Cache Lines
 Complexity: O(1) Deterministic
-                </pre>
+                </code></pre>
             </div>
         </div>
 
         <div class="header" style="margin-top:40px; border-top: 2px solid #fff;">
-            <pre>
+            <pre><code class="language-plaintext">
 ================================================================================
 Validated on kernel-6.14.0-37. All theorems derived from binary telemetry.
 ================================================================================
-            </pre>
+            </code></pre>
         </div>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
 </body>
 
 </html>
