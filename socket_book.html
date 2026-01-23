@@ -189,6 +189,30 @@ BOOT INITIALIZATION SEQUENCE
    - mnt_sb->s_op = &sockfs_ops
    - sockfs_ops[0] = sock_alloc_inode
 
+DERIVATION: WHY MOUNT & WIRE? (VFS DISPATCH)
+  Problem: Sockets need inodes, but have no disk.
+  Solution: Create a RAM-based filesystem (sockfs) and mount it.
+  
+  Dispatch Logic (The "Why"):
+  
+  Without Function Pointers (Bad):
+    alloc_inode(sb) {
+      if (sb->type == EXT4) return ext4_alloc();
+      if (sb->type == SOCK) return sock_alloc(); // O(N)
+    }
+    
+  With Function Pointers (Good - The Linux Way):
+    alloc_inode(sb) {
+      return sb->s_op->alloc_inode(sb);          // O(1)
+    }
+  
+  Verification:
+    sb->s_op points to 0xffffffff8276e740 (sockfs_ops)
+    sockfs_ops[0] points to 0xffffffff821cc3f0 (sock_alloc_inode)
+    
+  Result: user call -> sb->s_op -> sock_alloc_inode. 
+  No loops. No comparisons. One memory read + one jump.
+
 ======================================================================
 RUNTIME EXECUTION: sock_alloc()
 ======================================================================
@@ -300,12 +324,74 @@ Allocation mechanism (SLUB):
   3. Update freelist to next available block
   Cost: O(1) - single pointer update
 
+DERIVATION: WHY SLAB ALLOCATION?
+  Problem: socket() needs 768 bytes.
+  Bad Solution: kmalloc(768).
+    - Cost: Search heap for 768-byte hole (O(log N)).
+    - Result: Memory fragmentation (odd gaps).
+  Good Solution: Pre-allocate pool of 768-byte blocks (Slab).
+    - Cost: Pop from freelist (O(1)).
+    - Result: Zero fragmentation, instant retrieval.
+  
+  Real Data Calculation:
+    Active Sockets: 2099 (from /proc/slabinfo)
+    Object Size: 832 bytes
+    Memory Usage: 2099 × 832 = 1,746,368 bytes (1.66 MB)
+
+DERIVATION: WHY 64-BYTE ALIGNMENT (SLAB_HWCACHE_ALIGN)?
+  Hardware Constraint: CPU cache lines are 64 bytes.
+  
+  Scenario without alignment:
+    Socket A: bytes 0-767    (Lines 0-11)
+    Socket B: bytes 768-1535 (Lines 12-23)
+    Socket C: bytes 1536-1599, then 1600-2303 (SPLITS Line 24)
+  
+  Impact of Splitting:
+    Core 1 writes Socket C (bytes 1536-1599).
+    Core 2 writes Socket D (bytes 1600...).
+    Both share Line 24. CPU must lock/synchronize the line.
+    Result: Massive performance drop (False Sharing).
+  
+  Solution with alignment:
+    Structure size: 768 bytes.
+    768 ÷ 64 = 12.0 (Exact fit).
+    Every socket starts at a 64-byte boundary. No sharing.
+
+DERIVATION: WHY CONSTRUCTOR (init_once)?
+  Problem: Allocator needs 8 bytes for a 'free pointer' (next node).
+  Constraint: Cannot overwrite object data (it's initialized).
+  Solution: Store free pointer OUTSIDE the object.
+  
+  Math:
+    Object: 768 bytes
+    Metadata: 8 bytes
+    Sum: 776 bytes
+    Align to 64: Next multiple is 832 (13 × 64).
+  
+  Result: 832 bytes is the minimum physical size to satisfy:
+    1. Object storage (768)
+    2. Freelist metadata (8)
+    3. Cache alignment (56 bytes padding)
+
 Layout of 832-byte block:
   [0-127]:   struct socket (128 bytes)
   [128-751]: struct inode (624 bytes)
   [752-767]: padding (16 bytes for alignment)
   [768-775]: free pointer metadata (8 bytes)
   [776-831]: padding to 64-byte boundary (56 bytes)
+
+======================================================================
+SELF-VERIFICATION QUIZ
+======================================================================
+
+1. Why does the kernel need sockfs? Why not just kmalloc(768)?
+   Answer: kmalloc is O(log N) and fragments memory. sockfs/slab is O(1) and strictly partitioned.
+
+2. What happens if you remove SLAB_HWCACHE_ALIGN?
+   Answer: Sockets would split cache lines. Cores writing to adjacent sockets would trigger cache synchronization (false sharing), killing performance.
+
+3. Calculate: How many cache lines does ONE socket span?
+   Answer: 768 bytes / 64 bytes/line = 12 cache lines.
 </code></pre>
     </div>
 
