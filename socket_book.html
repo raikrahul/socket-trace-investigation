@@ -225,9 +225,18 @@ EXECUTION OF sock_init() (Disassembly Trace):
    - Result: Visible in /proc/filesystems.
 
 3. `kern_mount(&sock_fs_type)`:
-   - Allocates Superblock and VFSmount.
-   - Wires `sb->s_op = &sockfs_ops`.
+   - Triggers VFS to create a filesystem context.
+   - Calls `sockfs_init_fs_context()` which sets `ctx->ops = &sockfs_ops`.
+   - VFS calls `pseudo_fs_fill_super()` (fs/libfs.c).
+   - Trace: `sb->s_op = ctx->ops` -> `sb->s_op = &sockfs_ops`.
    - Result: `sock_mnt` global variable populated.
+
+   DEEP DIVE: THE WIRING CHAIN (Source Trace)
+   1. `sockfs_init_fs_context` (net/socket.c):
+      `ctx->ops = &sockfs_ops;`
+   2. `pseudo_fs_fill_super` (fs/libfs.c):
+      `s->s_op = ctx->ops;` -- The physical connection is made here.
+   3. Result: Superblock now points to `sockfs_ops` (0xffffffff8276e740).
 
 4. `netfilter_init()`:
    - Initializes the packet filtering framework.
