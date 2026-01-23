@@ -222,25 +222,25 @@ AXIOM 0: THE IDENTITY OF THE SUPER_BLOCK
 EXACT KERNEL DEFINITION OF struct super_block:
 (From /usr/src/linux-source-6.8.0/include/linux/fs.h:1199)
 
-struct super_block {
-        struct list_head        s_list;             /* Keep this first */
-        dev_t                   s_dev;              /* search index; _not_ kdev_t */
-        unsigned char           s_blocksize_bits;
-        unsigned long           s_blocksize;        /* Filesystem block size */
-        loff_t                  s_maxbytes;         /* Max file size */
-        struct file_system_type *s_type;            /* Type (ext4, btrfs, tmpfs, etc.) */
-        const struct super_operations   *s_op;      /* OFFSET 48: Operations table (THE LAW BOOK) */
-        const struct dquot_operations   *dq_op;     /* Quota operations */
-        const struct quotactl_ops       *s_qcop;
-        const struct export_operations *s_export_op;
-        unsigned long           s_flags;
-        unsigned long           s_iflags;           /* internal SB_I_* flags */
-        unsigned long           s_magic;            /* Filesystem magic number */
-        struct dentry           *s_root;            /* Root directory entry */
-        struct rw_semaphore     s_umount;           /* For mount/unmount locking */
-        int                     s_count;            /* Reference count */
-        atomic_t                s_active;           /* Active count */
-        void                    *s_security;        /* Security context */
+<span class="c-kw">struct</span> <span class="c-type">super_block</span> {
+        <span class="c-type">struct list_head</span>        s_list;             <span class="c-comment">/* Keep this first */</span>
+        <span class="c-type">dev_t</span>                   s_dev;              <span class="c-comment">/* search index; _not_ kdev_t */</span>
+        <span class="c-type">unsigned char</span>           s_blocksize_bits;
+        <span class="c-type">unsigned long</span>           s_blocksize;        <span class="c-comment">/* Filesystem block size */</span>
+        <span class="c-type">loff_t</span>                  s_maxbytes;         <span class="c-comment">/* Max file size */</span>
+        <span class="c-type">struct file_system_type</span> <span class="c-ptr">*</span>s_type;            <span class="c-comment">/* Type (ext4, btrfs, tmpfs, etc.) */</span>
+        <span class="c-kw">const</span> <span class="c-type">struct super_operations</span>   <span class="c-ptr">*</span>s_op;      <span class="c-comment">/* OFFSET 48: Operations table (THE LAW BOOK) */</span>
+        <span class="c-kw">const</span> <span class="c-type">struct dquot_operations</span>   <span class="c-ptr">*</span>dq_op;     <span class="c-comment">/* Quota operations */</span>
+        <span class="c-kw">const</span> <span class="c-type">struct quotactl_ops</span>       <span class="c-ptr">*</span>s_qcop;
+        <span class="c-kw">const</span> <span class="c-type">struct export_operations</span> <span class="c-ptr">*</span>s_export_op;
+        <span class="c-type">unsigned long</span>           s_flags;
+        <span class="c-type">unsigned long</span>           s_iflags;           <span class="c-comment">/* internal SB_I_* flags */</span>
+        <span class="c-type">unsigned long</span>           s_magic;            <span class="c-comment">/* Filesystem magic number */</span>
+        <span class="c-type">struct dentry</span>           <span class="c-ptr">*</span>s_root;            <span class="c-comment">/* Root directory entry */</span>
+        <span class="c-type">struct rw_semaphore</span>     s_umount;           <span class="c-comment">/* For mount/unmount locking */</span>
+        <span class="c-type">int</span>                     s_count;            <span class="c-comment">/* Reference count */</span>
+        <span class="c-type">atomic_t</span>                s_active;           <span class="c-comment">/* Active count */</span>
+        <span class="c-type">void</span>                    <span class="c-ptr">*</span>s_security;        <span class="c-comment">/* Security context */</span>
         const struct xattr_handler * const *s_xattr; /* Extended attributes */
         struct hlist_bl_head    s_roots;            /* alternate root dentries for NFS */
         struct list_head        s_mounts;           /* list of mounts */
@@ -290,16 +290,16 @@ TOTAL SIZE: Approximately 560-768 bytes (varies with CONFIG options like CONFIG_
 struct super_operations (THE LAW BOOK):
 (From /usr/src/linux-source-6.8.0/include/linux/fs.h:2136)
 
-struct super_operations {
-        struct inode *(*alloc_inode)(struct super_block *sb);     /* Offset 0 */
-        void (*destroy_inode)(struct inode *);                    /* Offset 8 */
-        void (*free_inode)(struct inode *);                       /* Offset 16 */
-        void (*dirty_inode) (struct inode *, int flags);          /* Offset 24 */
-        int (*write_inode) (struct inode *, struct writeback_control *wbc);
-        int (*drop_inode) (struct inode *);
-        void (*evict_inode) (struct inode *);
-        void (*put_super) (struct super_block *);
-        int (*sync_fs)(struct super_block *sb, int wait, void *wbc);
+<span class="c-kw">struct</span> <span class="c-type">super_operations</span> {
+        <span class="c-type">struct inode</span> <span class="c-ptr">*(*</span><span class="c-func">alloc_inode</span><span class="c-ptr">)(struct super_block *sb);     </span><span class="c-comment">/* Offset 0 */</span>
+        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">destroy_inode</span><span class="c-ptr">)(struct inode *);                    </span><span class="c-comment">/* Offset 8 */</span>
+        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">free_inode</span><span class="c-ptr">)(struct inode *);                       </span><span class="c-comment">/* Offset 16 */</span>
+        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">dirty_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>, <span class="c-type">int</span> flags);          <span class="c-comment">/* Offset 24 */</span>
+        <span class="c-type">int</span> <span class="c-ptr">(*</span><span class="c-func">write_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>, <span class="c-type">struct writeback_control</span> <span class="c-ptr">*</span>wbc);
+        <span class="c-type">int</span> <span class="c-ptr">(*</span><span class="c-func">drop_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>);
+        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">evict_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>);
+        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">put_super</span><span class="c-ptr">)</span> (<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>);
+        <span class="c-type">int</span> <span class="c-ptr">(*</span><span class="c-func">sync_fs</span><span class="c-ptr">)(struct super_block *</span>sb, <span class="c-type">int</span> wait, <span class="c-type">void</span> <span class="c-ptr">*</span>wbc);
         int (*freeze_super) (struct super_block *);
         int (*freeze_fs) (struct super_block *);
         int (*thaw_super) (struct super_block *);
@@ -382,48 +382,48 @@ DEFINITION: A structure can be embedded within another structure.
 
 EXACT KERNEL DEFINITION (from /usr/src/linux-source-6.8.0/include/net/sock.h:1555):
 
-  struct socket_alloc {
-      struct socket socket;      /* Embedded at offset 0 */
-      struct inode vfs_inode;    /* Embedded at offset 128 (0x80 in hex) */
+  <span class="c-kw">struct</span> <span class="c-type">socket_alloc</span> {
+      <span class="c-type">struct socket</span> socket;      <span class="c-comment">/* Embedded at offset 0 */</span>
+      <span class="c-type">struct inode</span> vfs_inode;    <span class="c-comment">/* Embedded at offset 128 (0x80 in hex) */</span>
   };
 
 CONSEQUENCE:
   If you have a pointer to socket_alloc->vfs_inode (at offset 128), you can
   derive a pointer to the containing socket_alloc structure by subtracting 128:
   
-    socket_alloc_ptr = (char*)inode_ptr - 128
+    socket_alloc_ptr <span class="c-op">=</span> <span class="c-cast">(<span class="c-type">char</span><span class="c-ptr">*</span>)</span>inode_ptr <span class="c-op">-</span> 128
 
 EXACT CODE PATH - HOW sock_alloc_inode() RETURNS THE INODE POINTER:
 
 SOURCE: /usr/src/linux-source-6.8.0/net/socket.c:304-321
 
-  304: static struct inode *sock_alloc_inode(struct super_block *sb)
+  304: <span class="c-kw">static</span> <span class="c-type">struct inode</span> <span class="c-ptr">*</span><span class="c-func">sock_alloc_inode</span>(<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb)
   305: {
-  306:     struct socket_alloc *ei;
+  306:     <span class="c-type">struct socket_alloc</span> <span class="c-ptr">*</span>ei;
   307:
-  308:     ei = alloc_inode_sb(sb, sock_inode_cachep, GFP_KERNEL);
-  309:     if (!ei)
-  310:         return NULL;
-  311:     init_waitqueue_head(&ei->socket.wq.wait);
-  312:     ei->socket.wq.fasync_list = NULL;
-  313:     ei->socket.wq.flags = 0;
+  308:     ei <span class="c-op">=</span> <span class="c-func">alloc_inode_sb</span>(sb, sock_inode_cachep, <span class="c-macro">GFP_KERNEL</span>);
+  309:     <span class="c-kw">if</span> (!ei)
+  310:         <span class="c-kw">return</span> <span class="c-kw">NULL</span>;
+  311:     <span class="c-func">init_waitqueue_head</span>(&ei<span class="c-ptr">-></span>socket.wq.wait);
+  312:     ei<span class="c-ptr">-></span>socket.wq.fasync_list <span class="c-op">=</span> <span class="c-kw">NULL</span>;
+  313:     ei<span class="c-ptr">-></span>socket.wq.flags <span class="c-op">=</span> <span class="c-num">0</span>;
   314:
-  315:     ei->socket.state = SS_UNCONNECTED;
-  316:     ei->socket.flags = 0;
-  317:     ei->socket.ops = NULL;
-  318:     ei->socket.sk = NULL;
-  319:     ei->socket.file = NULL;
+  315:     ei<span class="c-ptr">-></span>socket.state <span class="c-op">=</span> SS_UNCONNECTED;
+  316:     ei<span class="c-ptr">-></span>socket.flags <span class="c-op">=</span> <span class="c-num">0</span>;
+  317:     ei<span class="c-ptr">-></span>socket.ops <span class="c-op">=</span> <span class="c-kw">NULL</span>;
+  318:     ei<span class="c-ptr">-></span>socket.sk <span class="c-op">=</span> <span class="c-kw">NULL</span>;
+  319:     ei<span class="c-ptr">-></span>socket.file <span class="c-op">=</span> <span class="c-kw">NULL</span>;
   320:
-  321:     return &ei->vfs_inode;   <<< LINE 321: RETURNS INODE POINTER AT OFFSET 128
+  321:     <span class="c-kw">return</span> &ei<span class="c-ptr">-></span>vfs_inode;   <span class="c-comment"><<< LINE 321: RETURNS INODE POINTER AT OFFSET 128</span>
   322: }
 
 WHAT DOES alloc_inode_sb() RETURN?
 
 SOURCE: /usr/src/linux-source-6.8.0/include/linux/fs.h:3033-3036
 
-  3033: alloc_inode_sb(struct super_block *sb, struct kmem_cache *cache, gfp_t gfp)
+  3033: <span class="c-func">alloc_inode_sb</span>(<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb, <span class="c-type">struct kmem_cache</span> <span class="c-ptr">*</span>cache, <span class="c-type">gfp_t</span> gfp)
   3034: {
-  3035:     return kmem_cache_alloc_lru(cache, &sb->s_inode_lru, gfp);
+  3035:     <span class="c-kw">return</span> <span class="c-func">kmem_cache_alloc_lru</span>(cache, &sb<span class="c-ptr">-></span>s_inode_lru, gfp);
   3036: }
 
 THE CALLER: WHO CALLS alloc_inode_sb() AND WHY?
@@ -450,15 +450,15 @@ INDIRECT CALLER: alloc_inode() (VFS generic allocator)
 
 SOURCE: /usr/src/linux-source-6.8.0/fs/inode.c:254-275
 
-  254: static struct inode *alloc_inode(struct super_block *sb)
+  254: <span class="c-kw">static</span> <span class="c-type">struct inode</span> <span class="c-ptr">*</span><span class="c-func">alloc_inode</span>(<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb)
   255: {
-  256:     const struct super_operations *ops = sb->s_op;
-  257:     struct inode *inode;
+  256:     <span class="c-kw">const</span> <span class="c-type">struct super_operations</span> <span class="c-ptr">*</span>ops <span class="c-op">=</span> sb<span class="c-ptr">-></span>s_op;
+  257:     <span class="c-type">struct inode</span> <span class="c-ptr">*</span>inode;
   258:
-  259:     if (ops->alloc_inode)
-  260:         inode = ops->alloc_inode(sb);  <<< CALLS sock_alloc_inode() via function pointer
-  261:     else
-  262:         inode = alloc_inode_sb(sb, inode_cachep, GFP_KERNEL);
+  259:     <span class="c-kw">if</span> (ops<span class="c-ptr">-></span>alloc_inode)
+  260:         inode <span class="c-op">=</span> ops<span class="c-ptr">-></span>alloc_inode(sb);  <span class="c-comment"><<< CALLS sock_alloc_inode() via function pointer</span>
+  261:     <span class="c-kw">else</span>
+  262:         inode <span class="c-op">=</span> <span class="c-func">alloc_inode_sb</span>(sb, inode_cachep, <span class="c-macro">GFP_KERNEL</span>);
   263:
   264:     if (!inode)
   265:         return NULL;
