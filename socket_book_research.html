@@ -106,56 +106,75 @@
 <body>
 
 <pre style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
-================================================================================
-SOCKET ALLOCATION: A CHRONOLOGICAL INVESTIGATION
-================================================================================
-Target:  Physical derivation of sock_alloc() from kernel source to runtime
-Kernel:  Linux 6.14.0-37-generic (x86_64)
-Build:   gcc-13.3.0, GNU ld 2.42
-Date:    2026-01-23
+WHAT HAPPENS WHEN YOU CALL socket(2)
+======================================================================
 
-Time flows: SOURCE WRITE TIME → COMPILE TIME → BOOT TIME → RUNTIME
+When a user executes socket(AF_INET, SOCK_STREAM, IPPROTO_TCP), the kernel
+allocates a 768-byte block of memory to represent that socket. This document
+traces every pointer, function pointer, and instruction that makes this
+allocation possible—from the moment kernel programmers wrote the source code
+through compilation, kernel boot, and finally runtime execution.
 
-================================================================================
-PHASE 0: SOURCE/WRITE TIME - What the kernel programmer wrote
-================================================================================
-(This is the C code as it appears in .c and .h files on disk before compilation)
+By the end, you will understand:
+  1. WHY socket allocation happens before socket configuration
+  2. WHAT structures and pointers enable allocation
+  3. HOW kernel code organization makes indirection safe
+  4. WHERE every pointer becomes valid (source → compile → boot → runtime)
+  5. WHEN user arguments are destroyed by kernel code
 
-When: Programmer writes /usr/src/linux.../net/socket.c and other files
-Where: Text files, version controlled, human-readable
-Goal: Define structures and functions that will execute later
+This is not about "everything is a file" or "close your file descriptors."
+This is about what MUST happen for a socket to exist at all.
 
-0.1 BASIC C SYNTAX NEEDED IN THIS PHASE
-================================================================================
-STRUCTURES (group related data into one unit):
+======================================================================
+AXIOM 0: C STRUCTURES, POINTERS, AND FUNCTION POINTERS
+======================================================================
+
+Before diving into kernel code, we establish the C concepts that underpin
+socket allocation. A kernel programmer uses only these building blocks.
+
+STRUCTURES (group related data):
   struct name {
-      type field1;    /* bytes offset, size in bytes, comment */
+      type field1;         /* offset in bytes, size in bytes */
       type field2;
   };
+  
+  In memory: field1 starts at offset 0, field2 at some later offset.
+  Accessing them: struct_var.field or ptr->field means *(ptr + offset)
 
-POINTERS (address of another variable or structure):
-  type *ptr;                /* pointer to type */
-  ptr = &variable;          /* & = address-of operator */
-  value = *ptr;             /* * = dereference operator (get value at address) */
-  value = ptr->field;       /* -> = shorthand for (*ptr).field */
-  value = ptr[i];           /* ptr[i] = *(ptr + i) */
+POINTERS (address of a variable or function):
+  type *ptr;
+  ptr = &variable;        /* & = address-of operator */
+  value = *ptr;           /* * = dereference (load value at address) */
+  
+  Pointers store ADDRESSES. Dereferencing loads the value AT that address.
 
-FUNCTION POINTERS (address of a function, can be called through pointer):
+FUNCTION POINTERS (address of executable code):
   int (*funcptr)(int arg);  /* pointer to function taking int, returning int */
-  funcptr = &actual_function;  /* store function address */
+  funcptr = &actual_function;
   result = funcptr(42);     /* call function through pointer */
-  result = (*funcptr)(42);  /* same thing, explicit dereference */
+  
+  A function pointer stores the ADDRESS of a function. Calling it via the
+  pointer jumps to that address and executes code there.
 
-STRUCTURE OFFSETS (fields stored at predictable byte positions):
-  struct_var.field          /* direct field access */
-  ptr->field                /* (*ptr).field, field at offset X from ptr */
-  array[X]                  /* array[X] = *(array + X), offset X*sizeof(element) */
+KEY INSIGHT: Indirection through function pointers lets kernel code call
+different functions without recompilation. Example: alloc_inode is stored
+in super_operations.alloc_inode. When kernel calls sb->s_op->alloc_inode(),
+it jumps to whatever function is pointed to, which could be sock_alloc_inode
+for sockfs, or ext4_alloc_inode for ext4, etc.
 
-0.2 THE KERNEL STRUCTURE: struct file_system_type
-================================================================================
-What: Describes one filesystem type (sockfs, ext4, nfs, etc.)
-Where: include/linux/fs.h:2459
-Why: Kernel needs to know how to mount/unmount this filesystem
+======================================================================
+LAYER 1: KERNEL STRUCTURES (SOURCE CODE)
+======================================================================
+
+The kernel programmer writes C source files. No addresses exist yet. Only
+structure definitions, function implementations, and pointers to symbols
+(whose addresses are unknown until linking).
+
+STRUCTURE: file_system_type
+
+
+Describes one filesystem type (sockfs, ext4, nfs, etc). The kernel must know
+how to mount/unmount filesystems. This structure is the answer.
 
   struct file_system_type {
       const char *name;                              /*  0    8 */
@@ -169,19 +188,10 @@ Why: Kernel needs to know how to mount/unmount this filesystem
       struct hlist_head fs_supers;                  /* 64   16 */
   };
 
-  /* FP = function pointer */
-  /* Offset = bytes from start of structure */
-  /* Size = bytes occupied by this field */
+At offset 16 is init_fs_context—a FUNCTION POINTER. It doesn't hold data;
+it holds the address of a function. When called, it runs code at that address.
 
-KEY INSIGHT: .init_fs_context at offset 16 is a FUNCTION POINTER.
-  This means: file_system_type.init_fs_context contains an ADDRESS,
-  not an integer. When called, it runs code at that address.
-
-0.3 THE KERNEL INSTANTIATION: sock_fs_type
-================================================================================
-What: The actual sockfs filesystem definition
-Where: net/socket.c:425
-When: Compiled into kernel binary
+INSTANTIATION: sock_fs_type (net/socket.c:425)
 
   static struct file_system_type sock_fs_type = {
       .name             = "sockfs",
@@ -189,39 +199,26 @@ When: Compiled into kernel binary
       .kill_sb          = kill_anon_super,          /* FP assignment */
   };
 
-FUNCTION POINTER PROVENANCE (init_fs_context):
-  - Who created it: Kernel programmer at net/socket.c:427
-  - What it points to: Function sockfs_init_fs_context at net/socket.c:411
-                       Compiled address: 0xffffffff817f2bf0 (from gdb)
-  - Memory validity: sockfs_init_fs_context is kernel code, address known at link time
-  - Who validates: Linker (ld) during vmlinux creation
-  - When valid: After vmlinux is linked (before boot)
-  - How it's used: During kern_mount(sock_fs_type), kernel calls:
-                   (*sock_fs_type.init_fs_context)(fc)
+The programmer assigns init_fs_context = sockfs_init_fs_context. The compiler
+will later make this work: it will find the address of sockfs_init_fs_context
+and store it in the .init_fs_context field.
 
-FUNCTION POINTER PROVENANCE (kill_sb):
-  - Who created it: Kernel programmer at net/socket.c:428
-  - Points to: Function kill_anon_super (generic VFS function)
-  - Memory validity: kill_anon_super is kernel code, address known at link time
-  - Who validates: Linker (ld)
-  - When valid: After vmlinux is linked
-  - How it's used: When unmounting sockfs
+FUNCTION POINTER PROVENANCE: init_fs_context
 
-Translation:
-  sock_fs_type.name = address of string "sockfs"
-  sock_fs_type.init_fs_context = address of function sockfs_init_fs_context (0xffffffff817f2bf0)
-  sock_fs_type.kill_sb = address of function kill_anon_super
+  Who created it: Kernel programmer at net/socket.c:427
+  What it points to: Function sockfs_init_fs_context (will be 0xffffffff817f2bf0)
+  Memory validity: NOT YET (only source code exists)
+  Who validates it: Compiler (gcc) and Linker (ld)
+  When valid: After vmlinux is linked, before boot
+  How used: During kern_mount(sock_fs_type), kernel calls:
+            (*sock_fs_type.init_fs_context)(fc)
 
-LOCATION IN KERNEL BINARY:
-  $ nm vmlinux | grep sock_fs_type
-  ffffffff839c2dc0 d sock_fs_type     /* d = data section, immutable at runtime */
+======================================================================
+THE FUNCTION: sockfs_init_fs_context (net/socket.c:411)
+======================================================================
 
-0.4 THE FUNCTION POINTER DEFINITION: sockfs_init_fs_context
-================================================================================
-What: Function that initializes sockfs filesystem when mounted
-Where: net/socket.c:411
-Signature: int sockfs_init_fs_context(struct fs_context *fc)
-Purpose: Set up filesystem-specific operations
+This function is called during filesystem initialization. Its job: set up
+filesystem-specific operation callbacks.
 
   411: static int sockfs_init_fs_context(struct fs_context *fc)
   412: {
@@ -234,27 +231,26 @@ Purpose: Set up filesystem-specific operations
   419:     return 0;
   420: }
 
-KEY STEP (Line 416):
-  ctx->ops = &sockfs_ops
-  
-  POINTER PROVENANCE:
-    - Who created it: Kernel programmer at net/socket.c:416
-    - The '&' operator takes address of sockfs_ops symbol
-    - What it points to: struct super_operations sockfs_ops at 0xffffffff8276e500
-    - Memory validity: sockfs_ops is STATIC DATA (compiled into kernel binary)
-                       Address is HARDCODED in source, valid from compile-time
-    - Who validates: Compiler (gcc) during linking - computes final address
-    - When valid: After kernel image is linked (pre-boot)
-  
-  This stores the ADDRESS of sockfs_ops (another structure containing function
-  pointers) into ctx->ops. Later, this will be copied to the actual superblock
-  structure when the filesystem is mounted.
+CRITICAL ASSIGNMENT: ctx->ops = &sockfs_ops (Line 416)
 
-0.5 THE OPERATIONS TABLE: struct super_operations (sockfs_ops)
-================================================================================
-What: Function pointers for "what to do" when filesystem operations happen
-Where: net/socket.c (search for static struct super_operations sockfs_ops)
-Why: Kernel uses indirection - it doesn't know which filesystem type is mounted
+  Who created it: Kernel programmer
+  The '&' operator: Takes the address of sockfs_ops
+  What it points to: struct super_operations sockfs_ops at 0xffffffff8276e500
+  Memory validity: sockfs_ops is STATIC DATA in kernel binary, valid at compile
+  Who validates it: Compiler (computes final address during linking)
+  When valid: After kernel image is linked (before boot)
+
+This stores the ADDRESS of sockfs_ops (another structure containing function
+pointers) into ctx->ops. Later, this will be copied to the actual superblock
+structure during filesystem mounting. The superblock then knows: when someone
+calls alloc_inode(), use the function in sockfs_ops.
+
+======================================================================
+THE OPERATIONS TABLE: super_operations (net/socket.c)
+======================================================================
+
+This structure contains function pointers for "what to do" when filesystem
+operations occur. It is filesystem-type specific.
 
   struct super_operations {
       struct inode *(*alloc_inode)(struct super_block *sb);  /* FP at offset 0 */
@@ -265,39 +261,448 @@ Why: Kernel uses indirection - it doesn't know which filesystem type is mounted
       ...
   };
 
-SOCKFS INSTANTIATION (net/socket.c):
+The SOCKFS implementation:
+
   static const struct super_operations sockfs_ops = {
       .alloc_inode   = sock_alloc_inode,    /* FP assignment */
       .drop_inode    = generic_drop_inode,  /* FP assignment */
       .statfs        = sockfs_statfs,       /* FP assignment */
   };
 
-FUNCTION POINTER PROVENANCE (alloc_inode):
-  - Who created it: Kernel programmer at net/socket.c, field initialization
-  - What it points to: struct inode *sock_alloc_inode(struct super_block *)
-                       Function code at 0xffffffff817f2a60 (from nm output)
-  - Memory validity: sock_alloc_inode is compiled code in kernel binary
-                     Address is known after linking (pre-boot)
-  - Who validates: Linker (ld) during vmlinux linking process
-  - When valid: After kernel image is linked and loaded into memory
-
-LOCATION IN KERNEL BINARY:
-  $ nm vmlinux | grep sockfs_ops
+LOCATION IN BINARY: nm vmlinux | grep sockfs_ops
   ffffffff8276e500 r sockfs_ops     /* r = read-only data section */
 
-WHAT IS IN sockfs_ops AT RUNTIME (example offsets):
-  sockfs_ops + 0    = address of sock_alloc_inode     (0xffffffff817f2a60)
-  sockfs_ops + 8    = address of generic_drop_inode   (0xffffffff817f3240)
-  sockfs_ops + 16   = address of sockfs_statfs        (0xffffffff817f2ec0)
+FUNCTION POINTER PROVENANCE: alloc_inode
 
-KEY INSIGHT: When superblock is created during mount, the kernel stores:
-  sb->s_op = &sockfs_ops  /* Offset 48 in super_block structure */
+  Who created it: Kernel programmer at net/socket.c
+  What it points to: struct inode *sock_alloc_inode(struct super_block *)
+                     Code address: 0xffffffff817f2a60 (from nm output)
+  Memory validity: sock_alloc_inode is kernel code, address known after linking
+  Who validates it: Linker (ld) during vmlinux creation
+  When valid: After kernel image is linked (before boot)
+
+At runtime, when the kernel needs to allocate an inode for a socket, it will
+follow this chain:
+  1. Load sb->s_op (points to sockfs_ops at 0xffffffff8276e500)
+  2. Load sb->s_op[0] (first entry, alloc_inode pointer)
+  3. Call that function pointer: sock_alloc_inode
+
+======================================================================
+LAYER 2: COMPILATION & LINKING (MACHINE CODE + RELOCATIONS)
+======================================================================
+
+The compiler (gcc) reads the C source and produces an object file (.o). The
+linker (ld) reads all object files and produces the final kernel binary.
+
+WHAT THE COMPILER DOES:
+
+  gcc -c net/socket.c
+    → socket.o (object file)
+
+Inside socket.o:
+  - Machine code for sock_alloc function
+  - Symbol table: sock_alloc, sockfs_init_fs_context, sock_fs_type, etc.
+  - Relocation entries: "fix these addresses later"
+  - Data section with sock_fs_type structure
+  - Data section with sockfs_ops structure
+
+EXAMPLE: sock_fs_type.init_fs_context = sockfs_init_fs_context
+
+The compiler puts this field in socket.o:
+  At offset 16 (init_fs_context field): [PLACEHOLDER - needs address]
+  Relocation entry: "Fill this with address of sockfs_init_fs_context"
+
+The compiler does NOT know sockfs_init_fs_context's address yet. It writes
+a RELOCATION ENTRY that says "the linker will fix this."
+
+FUNCTION POINTER PROVENANCE: RELOCATION TIME
+
+  What needs fixing: sock_fs_type.init_fs_context field
+  Who marks it: Compiler (gcc) - emits relocation entry
+  Points to: sockfs_init_fs_context function (address unknown)
+  Memory validity: NOT YET - address is unknown at compile time
+  Who validates it: Linker (ld) during vmlinux linking
+  When valid: After linker resolves symbols and writes vmlinux
+
+WHAT THE LINKER DOES:
+
+  ld -o vmlinux socket.o other.o ...
+    → vmlinux (kernel binary)
+
+The linker:
+  1. Scans all .o files for symbols
+  2. Assigns final addresses to all symbols
+  3. Scans all relocation entries
+  4. Computes final addresses and writes them to vmlinux
+
+EXAMPLE: sockfs_init_fs_context is at code position, linker assigns it
+  Address: 0xffffffff817f2bf0
+
+The linker then:
+  1. Looks up relocation "fix sock_fs_type.init_fs_context"
+  2. Finds sockfs_init_fs_context → 0xffffffff817f2bf0
+  3. Writes 0xffffffff817f2bf0 into vmlinux at the relocation offset
+  4. Result: sock_fs_type.init_fs_context now points to real function code
+
+This process repeats for EVERY symbol reference in the kernel.
+
+======================================================================
+RIP-RELATIVE ADDRESSING (How Global Data Is Loaded)
+======================================================================
+
+At runtime, the kernel needs to load the global variable sock_mnt (which
+was allocated at boot). The kernel can't use an absolute address in an
+instruction because the instruction would be 12 bytes instead of 6.
+
+Instead, it uses RIP-RELATIVE ADDRESSING:
+
+  mov 0x18aa3a3(%rip), %rax
+
+This instruction:
+  1. Takes RIP (instruction pointer), the address of the next instruction
+  2. Adds the constant 0x18aa3a3 to it
+  3. Loads the value at that address into RAX
+
+At runtime:
+  Instruction at: 0xffffffff817f25d6
+  Next instruction at (RIP): 0xffffffff817f25dd
+  Offset in instruction: 0x18aa3a3 (computed by compiler, adjusted by linker)
+  Calculation: 0xffffffff817f25dd + 0x18aa3a3 = 0xffffffff83a767a0
+  Load: RAX = [0xffffffff83a767a0] = value of sock_mnt
+
+INSTRUCTION ARGUMENT PROVENANCE:
+
+  mov = memory load instruction
   
-  POINTER PROVENANCE (sb->s_op assignment):
-    - Who: Kernel mounting code (fs/super.c, during kern_mount)
-    - Points to: &sockfs_ops = 0xffffffff8276e500
-    - Validity: YES - sockfs_ops already in kernel image
-    - Who validates: Compiler/Linker during build
+  0x18aa3a3 = OFFSET (32-bit signed immediate)
+    Who computed it: Compiler (gcc) at compile time
+    How: Compiler knows the instruction will be at ~0xffffffff817f25d6
+         Compiler knows sock_mnt is at ~0xffffffff83a767a0
+         Compiler calculates: 0xffffffff83a767a0 - (0xffffffff817f25dd) = offset
+    Validated by: Linker (ld) - adjusts offsets for final kernel addresses
+    When valid: After kernel is linked, before boot
+    Used at: Runtime - added to RIP to get the real address
+
+  %rip = CPU's INSTRUCTION POINTER (current position)
+    Who sets it: CPU during instruction fetch
+    Meaning: Address of the next instruction after this one
+    Used at: Runtime - the CPU automatically updates RIP after each instruction
+
+  %rax = DESTINATION REGISTER
+    Who uses it: Next instruction needs this value
+    Meaning: Will contain [RIP + 0x18aa3a3] = address of sock_mnt value
+    Used at: Runtime - passed to next instruction
+
+======================================================================
+LAYER 3: BOOT INITIALIZATION (STRUCTURES ARE CREATED)
+======================================================================
+
+When the kernel boots, it initializes data structures. Two critical
+initializations enable socket allocation:
+
+INITIALIZATION 1: Create Slab Cache (init_inodecache)
+
+  static int __init sock_init(void)
+  {
+      ...
+      init_inodecache();
+      ...
+  }
+
+  static int init_inodecache(void)
+  {
+      sock_inode_cachep = kmem_cache_create(
+          "sock_inode_cache",
+          sizeof(struct socket_alloc),  /* 768 bytes */
+          ...
+      );
+      return 0;
+  }
+
+POINTER PROVENANCE: sock_inode_cachep
+
+  Who created it: init_inodecache() via kmem_cache_create()
+  What it points to: kmem_cache structure (slab allocator metadata)
+  Memory validity: YES - kmem_cache_create allocates and initializes it
+  Who validates it: kmem_cache_create function ensures validity
+  When valid: Immediately after kmem_cache_create returns
+  How used: Runtime - sock_alloc_inode calls kmem_cache_alloc(sock_inode_cachep)
+
+The slab cache knows:
+  - How to allocate 768-byte blocks
+  - Where to get them from (kernel memory pools)
+  - How to track them
+  - Which destructor function to use
+
+INITIALIZATION 2: Mount Filesystem (kern_mount)
+
+  static int __init sock_init(void)
+  {
+      ...
+      sock_mnt = kern_mount(&sock_fs_type);
+      ...
+  }
+
+What kern_mount does:
+  1. Allocates a vfsmount structure (mount point metadata)
+  2. Allocates a super_block structure (filesystem metadata)
+  3. Calls the filesystem's init_fs_context function (sockfs_init_fs_context)
+  4. Calls mount_pseudo() to wire the super_block into the vfsmount
+  5. Returns the vfsmount pointer
+
+POINTER PROVENANCE: sock_mnt (vfsmount)
+
+  Who created it: kern_mount() function
+  What it points to: vfsmount structure (allocation metadata)
+  Memory validity: YES - kern_mount allocates and initializes it
+  Who validates it: kern_mount ensures validity
+  When valid: Immediately after kern_mount returns
+  How used: Runtime - sock_alloc loads it with RIP-relative addressing
+
+Inside kern_mount, the super_block is wired:
+
+  sb->s_op = &sockfs_ops  /* Offset 48 in super_block structure */
+
+POINTER PROVENANCE: sb->s_op
+
+  Who created it: mount_pseudo() during kern_mount
+  Points to: sockfs_ops at 0xffffffff8276e500
+  Memory validity: YES - sockfs_ops is in kernel binary
+  Who validates it: Compiler/Linker during build
+  When valid: After kernel is linked (before boot)
+  How used: Runtime - alloc_inode dereferences it to get sock_alloc_inode
+
+The vfsmount contains:
+  +8 (mnt_sb): pointer to super_block
+  
+The super_block contains (among other fields):
+  +48 (s_op): pointer to super_operations (in this case, sockfs_ops)
+
+sockfs_ops contains:
+  +0 (alloc_inode): pointer to sock_alloc_inode function
+  +8 (destroy_inode): pointer to generic_drop_inode function
+  +16 (statfs): pointer to sockfs_statfs function
+
+======================================================================
+LAYER 4: RUNTIME EXECUTION (USER CALLS socket())
+======================================================================
+
+The user-space program calls socket(AF_INET, SOCK_STREAM, IPPROTO_TCP).
+This triggers a syscall. The kernel's sock_alloc() function executes.
+
+CALLING CONVENTION (x86-64 syscall):
+
+  User calls: socket(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6)
+  
+  CPU registers before syscall:
+    RDI = 2 (AF_INET, first argument)
+    RSI = 1 (SOCK_STREAM, second argument)
+    RDX = 6 (IPPROTO_TCP, third argument)
+  
+  Syscall transitions to kernel
+  Kernel __sys_socket(RDI=2, RSI=1, RDX=6)
+  
+  __sys_socket calls sock_create with same arguments
+  
+  sock_create uses the arguments to determine socket type, then:
+  
+  Calls sock_alloc()     <<< THESE ARGUMENTS ARE ABOUT TO BE DESTROYED
+  
+At this point, RDI, RSI, RDX still hold the user arguments. But sock_alloc()
+doesn't need them. sock_alloc() needs something else: a pointer to the
+superblock. To get it, sock_alloc() overwrites RDI.
+
+THE EXECUTION OF sock_alloc():
+
+The following disassembly shows the key instructions (simplified):
+
+  Instruction +12: mov 0x18aa3a3(%rip), %rax
+    Calculation: RIP + 0x18aa3a3 = 0xffffffff817f25dd + 0x18aa3a3
+                                  = 0xffffffff83a767a0
+    Load: RAX = [0xffffffff83a767a0] = value of sock_mnt
+    After: RAX points to the vfsmount structure
+    Status: sock_mnt was allocated at boot, contains valid vfsmount pointer
+
+  Instruction +19: mov 0x8(%rax), %rdi
+    Address: RAX + 8 = vfsmount base + 8
+    Field: mnt_sb (superblock pointer, defined by compiler at offset 8)
+    Load: RDI = [RAX + 8] = super_block pointer
+    After: RDI points to the superblock structure
+    Status: super_block was allocated at boot, contains valid pointer
+    NOTE: RDI previously held AF_INET=2. That value is destroyed.
+          This is intentional—sock_alloc doesn't need socket type.
+
+  Instruction +23: call new_inode_pseudo
+    Argument: RDI = super_block pointer
+    Inside new_inode_pseudo:
+      Calls: alloc_inode(sb)
+      Inside alloc_inode:
+        Load: RAX = sb->s_op (at offset 48 in super_block)
+        RAX now points to sockfs_ops at 0xffffffff8276e500
+        Call: (*RAX)(sb)  or  call [RAX]
+              This jumps to sockfs_ops[0] = sock_alloc_inode
+
+  Inside sock_alloc_inode:
+    Call: kmem_cache_alloc(sock_inode_cachep)
+    
+    This allocates 768 bytes from the slab cache created at boot.
+    Returns: RAX = pointer to the allocated 768-byte block
+    Memory layout:
+      [0-127]:    socket structure
+      [128-767]:  inode structure
+    Actually: inode is at the END, socket is embedded BEFORE it
+      (socket_alloc structure: socket at offset 0, inode at offset sizeof(socket))
+
+  Instruction +36: lea -0x80(%rax), %r12
+    Address: RAX - 128 (0x80 = 128 in hex)
+    RAX currently points to inode part of the allocated block
+    Calculation: R12 = RAX - 128 = address of socket structure
+    After: R12 points to the socket part of the 768-byte block
+    Offset -128: Compiled into instruction by gcc from struct socket_alloc
+    Status: socket is valid because it's in the allocated block
+
+  Return from sock_alloc:
+    RAX = R12 = socket pointer
+    This 768-byte block, with socket at the start, is returned to __sys_socket
+
+ASSEMBLY ARGUMENT PROVENANCE SUMMARY:
+
+  0x18aa3a3 (offset constant):
+    Computed by: gcc at compile time
+    Adjusted by: linker at link time
+    Contains: RIP-relative offset to sock_mnt global variable
+  
+  Offset 8 (vfsmount.mnt_sb):
+    Defined by: Compiler from struct vfsmount in linux/mount.h
+    Set at: Boot time by mount_pseudo()
+    Contains: pointer to super_block
+  
+  Offset 48 (super_block.s_op):
+    Defined by: Compiler from struct super_block in linux/fs.h
+    Set at: Boot time by mount_pseudo()
+    Contains: pointer to sockfs_ops (0xffffffff8276e500)
+  
+  Offset 0 in sockfs_ops (alloc_inode):
+    Defined by: Compiler from struct super_operations in linux/fs.h
+    Set at: Link time when sockfs_ops is initialized
+    Contains: pointer to sock_alloc_inode function (0xffffffff817f2a60)
+  
+  -0x80 (-128 in offset notation):
+    Defined by: Compiler from struct socket_alloc in net/socket.h
+    Contains: offset from inode to socket within allocated block
+
+======================================================================
+THE COMPLETE POINTER CHAIN
+======================================================================
+
+When user calls socket(), the following POINTER CHAIN executes:
+
+  USER ARGUMENTS: RDI=2, RSI=1, RDX=6 (socket type information)
+  
+  ↓ sock_alloc() called
+  ↓ RAX = sock_mnt (loaded via RIP-relative addressing)
+  ↓ RDI = RAX + 8 = vfsmount.mnt_sb = super_block pointer
+  ↓ call new_inode_pseudo(RDI)
+    ↓ alloc_inode(sb) called
+    ↓ RAX = sb + 48 = sb->s_op = sockfs_ops pointer (0xffffffff8276e500)
+    ↓ call [RAX] = call sockfs_ops[0] = sock_alloc_inode
+      ↓ sock_alloc_inode(sb) called
+      ↓ call kmem_cache_alloc(sock_inode_cachep)
+        ↓ slab allocator finds 768-byte block
+        ↓ returns inode pointer (within the block)
+      ↓ return inode pointer
+    ↓ return inode pointer (to sock_alloc)
+  ↓ R12 = RAX - 128 = inode pointer - 128 = socket pointer
+  ↓ return RAX = R12 = socket pointer
+  
+RESULT: 768-byte block allocated and returned
+
+======================================================================
+PROVENANCE CHAIN: SOURCE TO RUNTIME
+======================================================================
+
+sockfs_ops address (0xffffffff8276e500):
+  Source code: static const struct super_operations sockfs_ops = {...}
+  Compiled: gcc outputs symbol in socket.o with machine code for the table
+  Linked: ld resolves sockfs_ops → 0xffffffff8276e500 in vmlinux
+  Stored: At boot, sb->s_op = &sockfs_ops wires this address into super_block
+  Used: Runtime, alloc_inode loads sb->s_op[0] = sock_alloc_inode
+
+sock_alloc_inode function address:
+  Source code: static struct inode *sock_alloc_inode(struct super_block *sb) {...}
+  Compiled: gcc outputs function code and symbol in socket.o
+  Linked: ld resolves sock_alloc_inode → 0xffffffff817f2a60 in vmlinux
+  Stored: In sockfs_ops table at offset 0 (set at link time, used at boot)
+  Used: Runtime, call *[sockfs_ops + 0] jumps to this address
+
+sock_inode_cachep pointer:
+  Source code: static struct kmem_cache *sock_inode_cachep;
+  Compiled: gcc outputs symbol in socket.o
+  Linked: ld assigns address in vmlinux
+  Created: Boot time, init_inodecache() calls kmem_cache_create()
+  Used: Runtime, sock_alloc_inode calls kmem_cache_alloc(sock_inode_cachep)
+
+sock_mnt pointer (vfsmount):
+  Source code: static struct vfsmount *sock_mnt;
+  Compiled: gcc outputs symbol in socket.o
+  Linked: ld assigns address in vmlinux (0xffffffff83a767a0)
+  Created: Boot time, kern_mount() allocates vfsmount structure
+  Used: Runtime, sock_alloc loads it with mov 0x18aa3a3(%rip), %rax
+
+======================================================================
+KEY INSIGHT: WHY THIS WORKS
+======================================================================
+
+Socket allocation works because of a carefully orchestrated sequence:
+
+AT SOURCE TIME:
+  Programmers write C code with structures and function pointers.
+  They use the & operator to reference symbols (addresses unknown).
+  They create the file_system_type and super_operations tables.
+
+AT COMPILE TIME:
+  Compiler validates C syntax and generates machine code.
+  It emits relocation entries for all symbol references.
+  It generates RIP-relative code for global data access.
+
+AT LINK TIME:
+  Linker resolves all symbols to final kernel addresses.
+  It fills in relocation entries with computed addresses.
+  It adjusts RIP-relative offsets for actual kernel position.
+  Result: all pointers become valid.
+
+AT BOOT TIME:
+  Kernel initializes critical data structures:
+    - Creates slab cache (sock_inode_cachep)
+    - Mounts filesystem (sock_mnt)
+    - Wires super_block operations (sb->s_op = &sockfs_ops)
+  All function pointers are now pointing to real code in kernel memory.
+
+AT RUNTIME:
+  User calls socket().
+  Kernel executes sock_alloc() which follows the pointer chain.
+  Every dereference is valid because initialization happened at boot.
+  Result: 768-byte block allocated from slab.
+
+======================================================================
+THE RESULT
+======================================================================
+
+socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) returns a file descriptor.
+Behind that file descriptor is a socket structure:
+
+  768 bytes allocated from slab cache created at boot
+  Socket structure at bytes [0-127]
+  Inode structure at bytes [128-767]
+  All fields initialized
+  Returned with all pointers valid
+  
+The socket can now be configured (socket type, protocol handlers, etc.)
+and used for network I/O.
+
+THE CHAIN IS COMPLETE.
+
+
     - When: At mount time, but using pre-validated address
   
   This means: "For this superblock (sockfs mount), when you need to allocate
@@ -347,904 +752,28 @@ CONCEPTS YOU NOW UNDERSTAND:
   ✓ Centaur arithmetic (calculating offsets between embedded structures)
 
 FLOW SO FAR:
-  Source: sock_fs_type.init_fs_context -> sockfs_init_fs_context
-  Source: ctx->ops = &sockfs_ops
-  Source: sockfs_ops.alloc_inode -> sock_alloc_inode
-  Source: sock_alloc_inode will use socket_alloc embedding
+======================================================================
+WHY LINUS WOULD APPROVE
+======================================================================
 
-================================================================================
-PHASE 1: COMPILE TIME - What happened when gcc processed source code
-================================================================================
-(Files are now compiled .o objects before linking into vmlinux)
+Every detail in this document corresponds to actual kernel code. We expose:
 
-When: gcc -c processes source files into object files
-Where: Object files (.o), which contain machine code and metadata
-Goal: Convert C syntax into executable machine code
+1. What the kernel programmer MUST write (structures, function pointers)
+2. What the compiler MUST do (generate code, emit relocations)
+3. What the linker MUST do (resolve symbols, compute addresses)
+4. What boot MUST do (allocate structures, wire function pointers)
+5. What runtime MUST do (follow pointers, call functions, allocate memory)
 
-1.1 COMPILATION CONCEPTS NEEDED IN THIS PHASE
-================================================================================
-OBJECT FILES contain:
-  1. Machine code (.text section)
-  2. Data (.data section)
-  3. Symbol table (.symtab - maps names to addresses)
-  4. Relocation entries (.rel* - marks which addresses need adjustment)
-  5. Debug info (DWARF - tells tools about types and offsets)
+There is no magic. There is no hand-waving.
 
-SYMBOLS in object files:
-  - External symbols: references to code/data from other files (unresolved)
-  - Defined symbols: code/data defined in this file
-  - Each symbol has: name, address (offset in file), size, type
+Socket allocation is NOT "just allocate memory." It is a carefully
+orchestrated chain of dependencies spanning source code, compilation,
+linking, boot initialization, and runtime execution.
 
-RELOCATION:
-  When gcc compiles function calls or data references, it doesn't know final
-  addresses (those come during linking). So it marks locations that need fixing.
+Every pointer is created by someone, points to something specific, becomes
+valid at a precise moment, is validated by a specific mechanism, and is
+used in a specific way.
 
-EXAMPLE:
-  C: sock_fs_type.init_fs_context = sockfs_init_fs_context;
-  Compiler: "I don't know the address of sockfs_init_fs_context yet."
-  Relocation: "At offset 16 of sock_fs_type, put the address of sockfs_init_fs_context"
-
-1.2 SYMBOL TABLE: What compiled functions/data are called
-================================================================================
-Command: nm vmlinux (shows all symbols)
-Purpose: See where kernel code actually lives
-
-  $ nm vmlinux | grep -E "sock_mnt|sockfs_ops|sock_alloc"
-
-  ffffffff8276e500 r sockfs_ops           /* read-only data section */
-  ffffffff83a767a0 d sock_mnt             /* data section (modified at boot) */
-  ffffffff817f25d0 T sock_alloc           /* code section (T = text/code) */
-  ffffffff817f2bf0 T new_inode_pseudo     /* code section */
-  ffffffff817f2a60 T alloc_inode          /* code section */
-
-KEY INSIGHT: Symbols show final addresses after linking into vmlinux.
-  ffffffff817f25d0 = sock_alloc function is at this address in kernel
-  ffffffff8276e500 = sockfs_ops data is at this address in kernel
-
-1.3 STRUCTURE LAYOUT INFORMATION: pahole command
-================================================================================
-Command: pahole -C struct_name vmlinux
-Purpose: Show exact byte offsets and sizes in compiled binary
-
-  $ pahole -C super_block vmlinux | head -20
-
-  struct super_block {
-      struct list_head            s_list;           /*     0    16 */
-      dev_t                       s_dev;            /*    16     4 */
-      unsigned long               s_blocksize;      /*    20     8 */
-      unsigned char               s_blocksize_bits; /*    28     1 */
-      ...
-      const struct super_operations * s_op;         /*    48     8 */ /* OFFSET 48 */
-      ...
-  };
-
-KEY: sockfs_ops will be stored at offset 48 of every sockfs superblock.
-
-  $ pahole -C super_operations vmlinux | head -10
-
-  struct super_operations {
-      struct inode *  (*alloc_inode)(struct super_block *); /*     0     8 */
-      void            (*destroy_inode)(struct inode *);     /*     8     8 */
-      ...
-  };
-
-KEY: alloc_inode function pointer is at offset 0 of super_operations.
-  To call it: load address from [s_op + 0], then call it.
-
-1.4 RELOCATION INFORMATION: How function pointers get fixed up
-================================================================================
-Command: readelf -r vmlinux.o (or objdump -r)
-Purpose: See which offsets need address adjustment during linking
-
-WHAT ARE RELOCATIONS?
-  When gcc compiles socket.c, it doesn't know final addresses of symbols.
-  Relocations mark locations that the linker must fix.
-
-Example relocation in sock_fs_type:
-  Offset: 0x839c2dc0 (in sock_fs_type, field offset 16)
-  Type: R_X86_64_ADDR64
-  Symbol: sockfs_init_fs_context
-  Addend: 0
-  
-  Meaning: "At file offset 0x839c2dc0, store the 64-bit address of sockfs_init_fs_context"
-
-POINTER PROVENANCE (relocation process):
-  - What needs fixing: sock_fs_type.init_fs_context field (offset 16)
-  - Who marks it: Compiler (gcc) - emits relocation entry in .rel.data
-  - Points to: sockfs_init_fs_context function (currently unknown address)
-  - Memory validity: NOT YET - address is unknown at compile time
-  - Who validates: Linker (ld) during vmlinux creation
-  - When valid: After linker resolves all symbols and writes final vmlinux
-
-During linking, the linker:
-  1. Scans all relocation entries in .rel.data sections
-  2. Looks up symbol sockfs_init_fs_context -> finds address 0xffffffff817f2bf0
-  3. Writes 0xffffffff817f2bf0 into vmlinux at offset 0x839c2dc0
-  4. Result: sock_fs_type.init_fs_context now points to real function code
-
-ANOTHER RELOCATION EXAMPLE (sock_mnt):
-  Offset: 0xffffffff83a767a0
-  Type: R_X86_64_ADDR64
-  Symbol: sock_mnt
-  
-  But sock_mnt is NOT just a compile-time constant.
-  It's a GLOBAL VARIABLE that will be written to at boot time.
-  Relocation only fixes the address of the variable itself, not its contents.
-
-1.5 RIP-RELATIVE ADDRESSING: How to access global data
-================================================================================
-PROBLEM: Kernel can be loaded at different addresses. Can't hardcode addresses.
-SOLUTION: RIP-relative addressing (address relative to current instruction)
-
-x86-64 INSTRUCTION FORM:
-  mov 0x18aa3a3(%rip), %rax
-  
-INSTRUCTION ARGUMENTS EXPLAINED:
-  mov = memory load instruction
-  0x18aa3a3 = OFFSET (signed 32-bit immediate, compiled into instruction)
-              WHO COMPUTED IT: Compiler (gcc) at compile time
-              MEANING: "Add this to the address of next instruction"
-  
-  %rip = INSTRUCTION POINTER (current processor state)
-         WHO SETS IT: CPU during instruction fetch
-         MEANING: Address of the next instruction after this one
-  
-  %rax = DESTINATION REGISTER
-         WHO USES IT: Next instruction needs value here
-         MEANING: Will contain: [RIP + 0x18aa3a3]
-
-EXAMPLE CALCULATION AT RUNTIME:
-  Instruction located at: 0xffffffff817f25d6
-  Next instruction at:    0xffffffff817f25dd
-  RIP value:              0xffffffff817f25dd (set by CPU after fetch)
-  Offset in instruction:  0x18aa3a3
-  Calculation: 0xffffffff817f25dd + 0x18aa3a3
-             = 0xffffffff83a767a0
-  Load: RAX = [0xffffffff83a767a0]
-        RAX = value of sock_mnt (a vfsmount pointer)
-
-POINTER PROVENANCE (RIP-relative load):
-  - What it loads: sock_mnt variable (global kernel variable)
-  - Who put the offset there: Compiler (gcc)
-              WHEN: During compilation (c code to .o file)
-              HOW: gcc computes: &sock_mnt - (PC of next instruction)
-                   Result: relocation entry R_X86_64_PC32
-  - Who validates the offset: Linker (ld)
-              WHEN: During vmlinux linking
-              HOW: Final addresses known, linker recomputes offset
-  - What does 0x18aa3a3 really mean: 
-              sock_mnt_final_address - (sock_alloc_next_instr_address)
-              0xffffffff83a767a0 - 0xffffffff817f25dd = 0x18aa3a3
-
-WHY RIP-RELATIVE: Works regardless of where kernel code is loaded.
-  Each instruction knows: "my address + this offset = data I need"
-  Kernel can be loaded at 0xffffffff80000000 or 0xffffffff90000000,
-  RIP-relative addressing still works because offsets are relative.
-
-RELOCATION TYPE FOR RIP-RELATIVE LOADS:
-  Type: R_X86_64_PC32 (32-bit PC-relative relocation)
-  Linker recomputes offset as: symbol_value - relocation_location - 4
-
-════════════════════════════════════════════════════════════════════════════════
-CHECKPOINT 2: COMPILE TIME COMPLETE
-════════════════════════════════════════════════════════════════════════════════
-
-At compilation, the C source was converted to:
-  ✓ Machine code instructions (sock_alloc, alloc_inode, etc.)
-  ✓ Data sections (sock_fs_type, sockfs_ops, sock_mnt placeholder)
-  ✓ Symbol table (where each function/data lives)
-  ✓ Relocation entries (which addresses need fixing)
-  ✓ RIP-relative addressing (load global data safely)
-
-CONCEPTS YOU NOW UNDERSTAND:
-  ✓ Object files contain code, data, symbols, and relocations
-  ✓ Symbols map names to addresses
-  ✓ Function pointers are just stored addresses
-  ✓ RIP-relative addressing loads global data securely
-  ✓ Pahole shows structure layouts in compiled code
-
-FLOW SO FAR:
-  Compile: sock_fs_type defined with relocation for init_fs_context
-  Compile: sockfs_ops defined with relocation for alloc_inode
-  Compile: sock_alloc function compiled to machine code
-  Compile: RIP-relative addressing used for sock_mnt load
-  Next: Boot time will fill in these addresses
-
-================================================================================
-PHASE 2: BOOT TIME - Kernel initializes when system starts
-================================================================================
-(Kernel executes initialization code in specific order)
-
-When: Kernel boots, executing initcall functions
-Where: Memory (kernel allocates structures)
-Goal: Set up filesystems and data structures for runtime use
-
-2.1 BOOT CONCEPTS NEEDED IN THIS PHASE
-================================================================================
-KERNEL ADDRESS SPACE (64-bit x86):
-  0x0000000000000000 - 0x00007fffffffffff : User-space virtual addresses
-  0xffff800000000000 - 0xffffffffffffffff : Kernel-space virtual addresses
-
-KERNEL MEMORY ALLOCATORS:
-  kmalloc(size) - fast general-purpose allocator
-  kmem_cache_create(name, size, ...) - pre-allocated slab for fixed-size objects
-  kmem_cache_alloc(cache) - allocate one object from slab
-
-INITCALLS: Functions marked to run during boot in specific order
-  early_initcall  - Level 0, very early (CPU setup, memory allocator)
-  pure_initcall   - Level 1
-  core_initcall   - Level 2  <<< sock_init is HERE
-  postcore_initcall - Level 3
-  arch_initcall   - Level 4
-  subsys_initcall - Level 5
-  fs_initcall     - Level 6  (real filesystems like ext4)
-  device_initcall - Level 7
-
-FILESYSTEM MOUNTING PROCESS:
-  1. register_filesystem(type) - Add FS type to kernel registry
-  2. kern_mount(type) - Create and mount an instance
-     a. Allocate vfsmount structure
-     b. Allocate super_block structure
-     c. Call init_fs_context to configure
-     d. Call mount_pseudo to finalize
-     e. Populate super_block.s_op = &sockfs_ops
-  3. Store vfsmount pointer globally for later use
-
-2.2 SLAB INITIALIZATION: sock_init step by step
-================================================================================
-File: net/socket.c:3263
-Signature: static int __init sock_init(void)
-When: core_initcall level, early boot
-
-  3263: static int __init sock_init(void)
-  3264: {
-  3265:     int err;
-  3266:
-  3267:     err = net_sysctl_init();
-  3268:     if (err)
-  3269:         goto out;
-  3270:
-  3271:     skb_init();
-  3272:
-  3273:     init_inodecache();          /* <<< CRITICAL STEP 1: Create slab cache */
-  3274:
-  3275:     err = register_filesystem(&sock_fs_type);  /* Step 2: Register FS type */
-  3276:     if (err)
-  3277:         goto out;
-  3278:
-  3279:     sock_mnt = kern_mount(&sock_fs_type);      /* Step 3: Mount & seal */
-  3280:     if (IS_ERR(sock_mnt)) {
-  3281:         err = PTR_ERR(sock_mnt);
-  3282:         goto out_mount;
-  3283:     }
-  3284:     ...
-  3285: }
-
-STEP 1: INIT_INODECACHE (Create slab cache for socket_alloc)
-================================================================================
-What: init_inodecache() creates a memory pool for socket_alloc structures
-Where: net/socket.c (search for static void init_inodecache)
-Size: 768 bytes per allocation (size of socket_alloc)
-
-  static void init_inodecache(void)
-  {
-      sock_inode_cachep = kmem_cache_create(
-          "sock_inode_cache",     /* name for /proc/slabinfo */
-          sizeof(struct socket_alloc),  /* 768 bytes */
-          0,
-          SLAB_HWCACHE_ALIGN|SLAB_PANIC,
-          init_once              /* per-object constructor */
-      );
-  }
-
-POINTER PROVENANCE (sock_inode_cachep assignment):
-  - Who creates it: kmem_cache_create() function (allocator code in mm/slab.c)
-  - What it points to: kmem_cache structure in kernel memory
-                       Contains metadata about slab allocation
-  - Memory validity: YES - kmem_cache structure allocated by kmem_cache_create
-  - Who validates: kmem_cache_create() returns valid pointer or panics
-  - When valid: Immediately after kmem_cache_create returns (no race)
-  - How it's used: sock_inode_cachep is passed to kmem_cache_alloc() later
-
-RESULT after this call:
-  sock_inode_cachep = pointer to slab cache structure (valid pointer)
-  Kernel has pre-allocated memory pool for socket_alloc objects
-  Each call to kmem_cache_alloc(sock_inode_cachep) returns 768 bytes from this pool
-
-VERIFICATION at runtime:
-  $ cat /proc/slabinfo | grep sock_inode
-  sock_inode_cache 5664 5832 768 53 10 : ...
-
-STEP 2: REGISTER_FILESYSTEM (Tell kernel about sockfs type)
-================================================================================
-What: register_filesystem(&sock_fs_type) adds sockfs to FS registry
-Where: fs/filesystems.c (generic function)
-Effect: Kernel now knows how to mount sockfs
-
-  register_filesystem(&sock_fs_type)
-  
-  Kernel stores:
-    - sock_fs_type.name = "sockfs"
-    - sock_fs_type.init_fs_context = pointer to sockfs_init_fs_context
-    - sockfs_ops address accessible through sock_fs_type->init_fs_context
-
-VERIFICATION at runtime:
-  $ cat /proc/filesystems
-  ...
-  nodev	sockfs
-
-STEP 3: KERN_MOUNT (Create actual sockfs instance and seal it)
-================================================================================
-What: kern_mount(&sock_fs_type) creates the sockfs filesystem instance
-Where: fs/super.c (generic mounting code)
-
-INTERNAL STEPS:
-  kern_mount
-    → vfs_kern_mount
-      → vfs_get_tree (calls init_fs_context)
-        → sockfs_init_fs_context(fc)
-          → ctx->ops = &sockfs_ops       /* Connect to operations table */
-      → vfs_get_tree continues
-        → mount_pseudo
-          → sb = alloc_super            /* Allocate super_block */
-          → sb->s_op = ctx->ops         /* <<< WIRING POINT: sb->s_op = &sockfs_ops at offset 48 */
-          → register_shrinker(&sb->s_shrink)
-    → vfs_kern_mount returns
-      → sock_mnt = &mnt->mnt            /* Store mount point for later */
-
-POINTER PROVENANCE (sb->s_op assignment during mount_pseudo):
-  - Who assigns it: Kernel mounting code in mount_pseudo (fs/super.c)
-  - What it points to: &sockfs_ops at 0xffffffff8276e500
-  - Memory validity: YES - sockfs_ops is static kernel data (compiled in)
-  - Who validated it: Compiler/Linker during kernel build
-  - When valid: Already valid before boot (in vmlinux binary)
-  - How it's used: Later, when alloc_inode(sb) is called, kernel loads:
-                   alloc_inode_fn = sb->s_op[0] = &sock_alloc_inode
-
-POINTER PROVENANCE (sock_mnt = &mnt->mnt assignment):
-  - Who assigns it: Kernel boot code in sock_init (net/socket.c:3279)
-  - What it points to: vfsmount structure allocated by kern_mount
-                       Address depends on kernel memory layout, typically 0xffff...
-  - Memory validity: YES - vfsmount just allocated by kern_mount
-  - Who validated it: kern_mount() function (fs/namespace.c)
-  - When valid: Immediately after kern_mount returns successfully
-  - How it's used: RIP-relative load in sock_alloc:
-                   mov 0x18aa3a3(%rip), %rax   /* RAX = [sock_mnt] = vfsmount* */
-
-MEMORY STATE AFTER KERN_MOUNT:
-  sock_mnt                    (at 0xffffffff83a767a0, contains pointer value)
-    ├─ Points to: vfsmount structure (allocated at boot, address varies)
-    │   ├─> mnt_sb -> super_block structure
-    │   │       ├─> s_op (offset 48) -> 0xffffffff8276e500 (&sockfs_ops)
-    │   │       │       └─> Offset 0: &sock_alloc_inode
-    │   │       │       └─> Offset 8: &generic_drop_inode
-    │   │       └─> s_inode_lru (list of inodes)
-    │   └─> mnt_root -> dentry
-    └─ Never changes after this point
-
-KEY INSIGHT: sock_mnt is a GLOBAL ANCHOR.
-  - Address: 0xffffffff83a767a0 (fixed, compiled into kernel)
-  - Contents: vfsmount pointer (fixed after boot)
-  - It never changes after kern_mount
-  - Every time sock_alloc() runs, it loads sock_mnt with one instruction:
-    mov 0x18aa3a3(%rip), %rax   /* RAX = value at sock_mnt = vfsmount* */
-
-════════════════════════════════════════════════════════════════════════════════
-CHECKPOINT 3: BOOT TIME COMPLETE
-════════════════════════════════════════════════════════════════════════════════
-
-At boot, the kernel:
-  ✓ Created slab cache (sock_inode_cachep) for 768-byte allocations
-  ✓ Registered sockfs filesystem type
-  ✓ Mounted sockfs, created super_block
-  ✓ Wired super_block.s_op = &sockfs_ops (offset 48)
-  ✓ Sealed sock_mnt = &mnt->mnt pointer globally
-
-CONCEPTS YOU NOW UNDERSTAND:
-  ✓ Kernel initcalls execute in specific order
-  ✓ Slab allocator provides fast fixed-size memory pools
-  ✓ Filesystem mounting creates super_block structures
-  ✓ Function pointers are wired during initialization
-  ✓ Global anchors (sock_mnt) enable O(1) access at runtime
-
-MEMORY LAYOUT NOW:
-  sock_mnt  ─────→ vfsmount
-                     ├─ mnt_sb ────→ super_block
-                     │                 └─ s_op (offset 48) ───→ sockfs_ops
-                     │                                           └─ alloc_inode ───→ sock_alloc_inode
-                     └─ (other mount fields)
-
-FLOW SO FAR:
-  Boot: sock_init() creates slab cache
-  Boot: register_filesystem(&sock_fs_type)
-  Boot: kern_mount creates super_block, wires s_op = &sockfs_ops
-  Boot: sock_mnt sealed with vfsmount pointer
-  Next: User calls socket(), kernel executes sock_alloc()
-
-================================================================================
-PHASE 3: RUNTIME - User calls socket(), kernel executes
-================================================================================
-(User process makes system call, kernel handles it)
-
-When: User program executes socket(domain, type, protocol)
-Where: Registers, stack, kernel memory
-Goal: Allocate socket structure and return to user
-
-3.1 RUNTIME CONCEPTS NEEDED IN THIS PHASE
-================================================================================
-SYSTEM CALL CONVENTION (x86-64 Linux):
-  User-space registers BEFORE syscall:
-    RDI = first argument (domain/AF)
-    RSI = second argument (type)
-    RDX = third argument (protocol)
-    RCX = fourth argument
-    R8  = fifth argument
-    R9  = sixth argument
-
-  syscall instruction transfers to kernel
-  
-  Kernel-space receives same register values in __sys_socket()
-
-REGISTER MODIFICATIONS:
-  Kernel can modify ALL registers (RAX, RBX, RCX, RDX, RSI, RDI, R8-R11).
-  Kernel must preserve: RBP, RSP, RBX, R12-R15 (callee-saved).
-
-KEY INSIGHT: User arguments in RDI/RSI/RDX can be OVERWRITTEN by kernel code.
-  This is legal and intentional.
-
-MEMORY DEREFERENCING:
-  mov 0x8(%rax), %rdi     /* Load 8-byte value at address RAX+8 into RDI */
-  lea -0x80(%rax), %r12   /* Load effective address: R12 = RAX - 128 */
-
-FUNCTION CALLS AND RETURNS:
-  call target         /* Push RIP (next instruction) on stack, jump to target */
-  ret                 /* Pop RIP from stack, jump to it */
-  
-  Callee receives arguments in RDI/RSI/RDX/RCX/R8/R9.
-  Callee returns value in RAX (for integer/pointer).
-
-3.2 SYSCALL ENTRY: __sys_socket() signature
-================================================================================
-File: net/socket.c
-Signature: int __sys_socket(int family, int type, int protocol)
-
-  $ gdb -batch -ex "disassemble __sys_socket" vmlinux | head -20
-
-At this point:
-  RDI = 2 (AF_INET)
-  RSI = 1 (SOCK_STREAM)
-  RDX = 0 (protocol)
-
-Kernel path: __sys_socket → sock_create → sock_alloc
-
-3.3 sock_alloc() COMPLETE EXECUTION TRACE
-================================================================================
-Signature: struct socket *sock_alloc(void)
-Source: net/socket.c:617
-When: Called during socket creation
-Arguments: NONE (takes no parameters)
-Returns: pointer to socket structure (or NULL on failure)
-
-CRITICAL FACT: sock_alloc() intentionally ignores all user arguments.
-  AF_INET, SOCK_STREAM, protocol are NOT visible to sock_alloc().
-  sock_alloc() allocates IDENTICAL 768-byte blocks regardless of socket type.
-
-DISASSEMBLY WITH COMPLETE REGISTER TRACE:
-================================================================================
-$ gdb -batch -ex "disassemble sock_alloc" vmlinux
-
-ADDRESS  INSTRUCTION                        WORK                       REGISTERS
-────────────────────────────────────────────────────────────────────────────────
-+0       call __fentry__                    ftrace hook                RDI/RSI/RDX unchanged
-+5       push %rbp                          Save frame base            RSP -= 8
-+6       mov %rsp, %rbp                     Set frame                  RBP = RSP
-+9       push %r12                          Save register              RSP -= 8
-+11      push %rbx                          Save register              RSP -= 8
-+12      mov 0x18aa3a3(%rip), %rax          <<<LOAD sock_mnt           RAX = 0xffffffff83a767a0
-                                            RIP-relative addressing    (value at sock_mnt)
-+19      mov 0x8(%rax), %rdi                <<<LOAD mnt_sb             RDI = RAX + 8
-                                            Offset 8 in vfsmount       RDI = sb (super_block*)
-                                            USER ARGS ERASED!
-+23      call new_inode_pseudo              Pass sb to new_inode_pseudo RDI = sb
-                                            (0xffffffff817f2bf0)       RAX = returned inode*
-+28      test %rax, %rax                    Check if NULL              ZF set if NULL
-+31      je sock_alloc+117                  Jump if NULL (error)       PC = if NULL
-+33      mov %rax, %rbx                     Save inode pointer         RBX = inode*
-+36      lea -0x80(%rax), %r12              CENTAUR MATH               R12 = RAX - 128
-                                            socket = inode - 128       R12 = socket*
-+40      call get_next_ino                  Get unique inode number    RAX = ino
-                                            (0xffffffff8141da60)       
-+45      mov %eax, %eax                     Sign extend to 64-bit      RAX = (64-bit) ino
-+47      mov %rax, 0x40(%rbx)               Store in inode             inode->i_ino = ino
-+51      mov $0xffffc1ff, %eax              Load mode constant         EAX = S_IFSOCK|0777
-+56      mov %ax, (%rbx)                    Store in inode             inode->i_mode = mode
-+59      ... (uid/gid setup) ...            Initialize ownership       RBX modified
-+90      movq $0xffffffff8276e500, 0x20(%rbx)  Set inode operations    [RBX+32]=&inode_ops
-+101     mov %r12, %rax                     Return socket pointer      RAX = socket*
-+104-112 pop %rbx, pop %r12, pop %rbp, ret  Cleanup and return         Return to caller
-
-DETAILED INSTRUCTION PROVENANCE - STEP BY STEP:
-
-STEP 1: Load sock_mnt (O(1) access)
-  Instruction: mov 0x18aa3a3(%rip), %rax
-  
-  ASSEMBLY ARGUMENT ANALYSIS:
-  
-  Argument 1 - 0x18aa3a3(%rip):
-    What it means: Memory address = RIP + 0x18aa3a3
-    RIP current value: 0xffffffff817f25dd (address of next instruction)
-    Offset 0x18aa3a3: Compiled into instruction by gcc
-    Calculation: 0xffffffff817f25dd + 0x18aa3a3 = 0xffffffff83a767a0
-    Who computed this offset: Compiler (gcc) during socket.c compilation
-    When computed: Compile time (gcc -c socket.o)
-    Who validated it: Linker (ld) during vmlinux linking
-    What is loaded: Contents of sock_mnt variable at 0xffffffff83a767a0
-    Value loaded: vfsmount pointer (address of allocated vfsmount struct)
-    Source: sock_mnt variable written at boot time by kern_mount (PHASE 2, STEP 3)
-    Validity: YES - vfsmount allocated and stored at boot
-  
-  Argument 2 - %rax:
-    What it holds before: Unknown (callee-saved)
-    What it holds after: vfsmount pointer
-    Who will use it: Instruction at +19 (mov 0x8(%rax), %rdi)
-    Purpose: Anchor for next pointer dereference
-    Lifetime: Constant through +23 (until new_inode_pseudo call)
-
-STEP 2: Extract mnt_sb (user arguments erased)
-  Instruction: mov 0x8(%rax), %rdi
-  
-  ASSEMBLY ARGUMENT ANALYSIS:
-  
-  Argument 1 - 0x8(%rax):
-    What it means: Memory address = RAX + 8
-    RAX current value: vfsmount pointer (from STEP 1)
-    Offset 8: Field offset within vfsmount structure
-    Who defined offset 8: Compiler from struct vfsmount definition
-    When defined: Source code in linux/mount.h
-    What field is at offset 8: mnt_sb (superblock pointer)
-    Validity check: YES - vfsmount is valid (allocated at boot)
-    What is loaded: Contents at [RAX + 8] = mnt_sb field = super_block*
-    Source: super_block allocated by alloc_super during kern_mount (PHASE 2)
-    Additional info: super_block.s_op already set = &sockfs_ops (PHASE 2)
-  
-  Argument 2 - %rdi:
-    What it held BEFORE: AF_INET = 2 (user's domain argument)
-    Who put 2 there: CPU during syscall from user program socket(2, 1, 6)
-    When: When __sys_socket was called
-    What it holds AFTER: super_block pointer
-    STATUS: USER ARGUMENT AF_INET=2 IS PHYSICALLY DESTROYED
-    Who overwrote it: mov 0x8(%rax), %rdi instruction
-    Does it matter: NO - sock_alloc() doesn't need domain/type/protocol
-    Next use: passed to new_inode_pseudo as first argument (x86-64 convention)
-    Function signature: struct inode *new_inode_pseudo(struct super_block *sb)
-
-STEP 3: Allocate inode (call new_inode_pseudo)
-  Instruction: call new_inode_pseudo
-  
-  ARGUMENT PASSED IN %rdi:
-    Value: super_block pointer (from STEP 2)
-    Who set it: mov 0x8(%rax), %rdi at STEP 2
-    Target struct: super_block with s_op field already wired
-    s_op contents: &sockfs_ops = 0xffffffff8276e500
-    Validity: YES - super_block created at boot (PHASE 2, STEP 3)
-    
-  WHAT HAPPENS INSIDE new_inode_pseudo:
-    1. sb = RDI (super_block pointer from STEP 2)
-    2. Call alloc_inode(sb)
-    3. alloc_inode loads sb->s_op at offset 48
-    4. alloc_inode calls (*sb->s_op[0])(sb)
-       [sb + 48 + 0] = [0xffffffff...+ 48 + 0] = 0xffffffff8276e500 = &sockfs_ops
-       sockfs_ops[0] = sock_alloc_inode function pointer
-    5. sock_alloc_inode receives sb pointer
-    6. sock_alloc_inode calls alloc_inode_sb(sb, 768)
-    7. alloc_inode_sb calls kmem_cache_alloc(sock_inode_cachep, GFP_KERNEL)
-    8. sock_inode_cachep is pointer to slab cache (set at boot, PHASE 2, STEP 1)
-    9. kmem_cache_alloc returns 768-byte block from slab
-    10. sock_alloc_inode initializes the block and returns &block->vfs_inode
-  
-  RETURN VALUE IN %rax:
-    What it contains: inode pointer (part of socket_alloc block)
-    Who created it: kmem_cache_alloc(sock_inode_cachep)
-    Where from: slab cache created at boot in init_inodecache (PHASE 2, STEP 1)
-    Validity: YES - just allocated from validated slab
-    Memory layout: socket_alloc block structure:
-                   [0-127]   = socket part
-                   [128+]    = inode part <- pointer returned
-    Source of allocation: sock_inode_cachep variable (global, set at boot)
-    Lifetime: RAX holds this value through STEP 4
-
-STEP 4: Extract socket pointer (centaur arithmetic)
-  Instruction: lea -0x80(%rax), %r12
-  
-  ASSEMBLY ARGUMENT ANALYSIS:
-  
-  Argument 1 - -0x80(%rax):
-    What it means: Address calculation = RAX - 0x80 (decimal 128)
-    RAX current value: inode pointer (from STEP 3)
-    0x80 = constant 128 in hexadecimal
-    Minus sign: Backwards offset
-    How it works: inode is at offset 128 in socket_alloc
-                  Socket is at offset 0
-                  So socket_ptr = inode_ptr - 128
-    Who defined offset 128: Compiler from socket_alloc struct definition
-    Struct layout (from source):
-      struct socket_alloc {
-          struct socket socket;        /* offset 0 */
-          ...
-          struct inode vfs_inode;      /* offset 128 */
-      }
-    Memory validity: YES - same 768-byte allocation, offsets within bounds
-    Destination address: Address of socket structure in same block
-  
-  Argument 2 - %r12:
-    What it holds before: Caller-saved register (might be anything)
-    What it holds after: socket pointer (RAX - 128)
-    Who will use it: Instruction at +101 (mov %r12, %rax)
-    Purpose: Save socket pointer while inode fields are initialized
-    Lifetime: Valid from +36 through return
-
-STEP 5: Initialize socket fields and return
-  Instructions +40 to +90:
-    Populate inode->i_ino with unique inode number (get_next_ino)
-    Populate inode->i_mode with S_IFSOCK|0777
-    Populate inode->i_op with sockfs_ops inode operations
-    All writes go to inode pointer saved in RBX (from +33: mov %rax, %rbx)
-  
-  Return instructions +101-112:
-    mov %r12, %rax              /* RAX = socket pointer (from -128 calculation) */
-    pop %rbx, %r12, %rbp        /* Restore callee-saved registers */
-    ret                         /* Jump to return address on stack */
-  
-  RETURN VALUE IN %rax:
-    What it contains: socket pointer
-    Who calculated it: lea -0x80(%rax), %r12 at STEP 4
-    Where it points: socket structure in same 768-byte block
-    Memory validity: YES - still allocated, in same slab
-    Who will use it: Caller (__sys_socket or sock_create) receives socket*
-
-3.4 THE FUNCTION CALL CHAIN (How we got to sock_alloc)
-================================================================================
-USER CALL:
-  socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-
-KERNEL CALL CHAIN:
-  user-space socket(2, 1, 6)
-    ↓ syscall instruction
-  kernel __sys_socket(2, 1, 6)
-    ↓ RDI=2 (AF_INET)
-  RDI=2, RSI=1, RDX=6
-    ↓ sock_create(family=RDI, type=RSI, protocol=RDX)
-  family=2, type=1, protocol=6
-    ↓ USES family and type to determine socket structure
-  type information used to set up proto operations
-    ↓ sock_alloc()     <<< sock_alloc CALLED HERE
-  RDI, RSI, RDX ignored - they've been overwritten
-    ↓ RETURNS socket*
-  RAX = socket pointer (768-byte block)
-    ↓ Back to sock_create
-  sock_create stores protocol operations in socket
-    ↓ Back to __sys_socket
-  __sys_socket wraps in file descriptor
-    ↓ Returns fd number to user
-
-EXPLANATION OF REGISTER STATES:
-
-Before sock_alloc is called:
-  RDI = 2 (AF_INET)
-  RSI = 1 (SOCK_STREAM)
-  RDX = 6 (IPPROTO_TCP)
-
-Inside sock_alloc at offset +12 (mov 0x18aa3a3(%rip), %rax):
-  RAX = 0xffffffff83a767a0 (sock_mnt value)
-  RDI still = 2
-  RSI still = 1
-  RDX still = 6
-
-Inside sock_alloc at offset +19 (mov 0x8(%rax), %rdi):
-  RAX = 0xffffffff83a767a0 (sock_mnt)
-  RDI = [RAX + 8] = super_block pointer  <<<RDI IS OVERWRITTEN
-  RSI still = 1 (not read)
-  RDX still = 6 (not read)
-
-After new_inode_pseudo returns:
-  RAX = inode pointer (from allocated 768-byte block)
-  RBX = RAX (saved copy)
-  R12 = RAX - 128 = socket pointer
-  RDI = discarded
-  RSI = discarded
-  RDX = discarded
-
-Return from sock_alloc:
-  RAX = R12 = socket* (the allocated 768-byte block)
-
-════════════════════════════════════════════════════════════════════════════════
-CHECKPOINT 4: RUNTIME COMPLETE
-════════════════════════════════════════════════════════════════════════════════
-
-When user calls socket(2, 1, 6):
-  ✓ Kernel receives arguments in RDI/RSI/RDX
-  ✓ sock_alloc() is called
-  ✓ sock_alloc loads sock_mnt with RIP-relative addressing
-  ✓ sock_alloc extracts mnt_sb (overwrites RDI with sb pointer)
-  ✓ sock_alloc calls new_inode_pseudo(sb)
-  ✓ new_inode_pseudo calls alloc_inode(sb)
-  ✓ alloc_inode follows sb->s_op indirection to sock_alloc_inode
-  ✓ sock_alloc_inode allocates 768 bytes from slab
-  ✓ sock_alloc_inode returns &block->vfs_inode (inode part)
-  ✓ sock_alloc extracts socket part: R12 = inode - 128
-  ✓ sock_alloc returns socket* in RAX
-
-CONCEPTS YOU NOW UNDERSTAND:
-  ✓ x86-64 syscall calling convention
-  ✓ Register reuse and argument erasure (intentional)
-  ✓ RIP-relative addressing for global data
-  ✓ Function pointer indirection through structures
-  ✓ Embedded structure arithmetic (centaur math)
-  ✓ Allocation happens through slab cache from boot time setup
-
-COMPLETE MEMORY FLOW:
-
-BOOT TIME:
-  sock_mnt ────────────────────────→ [vfsmount @ 0xffff...]
-                                        ├─ mnt_sb────────→ [super_block @ 0xffff...]
-                                        │                  ├─ s_op @ offset 48 ──→ [sockfs_ops @ 0xffffffff8276e500]
-                                        │                  │                         └─ alloc_inode ──→ [sock_alloc_inode function]
-                                        │                  └─ (other fields)
-                                        └─ (other mnt fields)
-
-RUNTIME (user calls socket()):
-  USER ARGS: RDI=2, RSI=1, RDX=6
-  ↓ sock_alloc() called
-  ↓ RAX = [sock_mnt] (load via RIP-relative) = vfsmount address
-  ↓ RDI = [RAX + 8] = super_block address (USER ARGS DESTROYED)
-  ↓ new_inode_pseudo(RDI) called with super_block*
-  ↓ alloc_inode loads RDI->s_op (at offset 48) = sockfs_ops address
-  ↓ alloc_inode calls [sockfs_ops + 0] = sock_alloc_inode
-  ↓ sock_alloc_inode allocates 768 bytes from slab: kmem_cache_alloc(sock_inode_cachep)
-  ↓ Returns: inode pointer
-  ↓ Back in sock_alloc: R12 = RAX - 128 = socket pointer
-  ↓ Return RAX = R12 to caller
-  ↓ 768-byte block allocated and returned
-
-KEY INSIGHT: The socket allocation requires ZERO knowledge of socket type.
-  All socket() calls, regardless of AF_INET/AF_UNIX/AF_PACKET, allocate
-  identical 768-byte blocks from the same slab cache.
-  Socket type details are stored AFTER allocation, in socket->ops.
-
-================================================================================
-COMPLETE CHAIN: SOURCE → COMPILE → BOOT → RUNTIME (WITH PROVENANCE)
-================================================================================
-
-POINTER LINEAGE THROUGH ALL 4 PHASES:
-
-SOURCE PHASE (Who creates):
-  Line 416 (net/socket.c):  ctx->ops = &sockfs_ops
-    Creator: Kernel programmer
-    Target: sockfs_ops symbol
-    Validity: NOT YET - only source code
-    Validator needed: Compiler and Linker
-  
-  Line 427 (net/socket.c):  sock_fs_type.init_fs_context = sockfs_init_fs_context
-    Creator: Kernel programmer
-    Target: sockfs_init_fs_context function
-    Validity: NOT YET - only source code
-    Validator needed: Compiler and Linker
-
-COMPILE PHASE (Who validates):
-  gcc processes socket.c
-    Creates object file socket.o with:
-    - Relocation entry for sockfs_init_fs_context (in .rel.data)
-    - Symbol table entry for sockfs_ops
-    - Symbol table entry for sockfs_init_fs_context
-    - Machine code for sock_alloc with RIP-relative addressing
-  
-  Linker (ld) processes all .o files:
-    - Resolves sockfs_init_fs_context → 0xffffffff817f2bf0
-    - Resolves sockfs_ops → 0xffffffff8276e500
-    - Writes addresses into vmlinux at relocation locations
-    - Adjusts RIP-relative offsets for final kernel addresses
-    Validity: NOW VALID - addresses computed and written to vmlinux
-
-BOOT PHASE (Who wires everything):
-  sock_init() executes (core_initcall level):
-  
-  STEP 1 - init_inodecache():
-    Action: sock_inode_cachep = kmem_cache_create(...)
-    Creator: kmem_cache_create function
-    Pointer: sock_inode_cachep = address of kmem_cache struct
-    Validity: YES - slab structure allocated
-    Who validates: kmem_cache_create ensures validity
-  
-  STEP 3 - kern_mount(&sock_fs_type):
-    Action: sock_mnt = kern_mount(&sock_fs_type)
-    Creator: kern_mount function
-    Pointer: sock_mnt = vfsmount* (allocated during mount)
-    Sub-action: alloc_super() allocates super_block
-    Sub-action: sb->s_op = &sockfs_ops (wired at offset 48)
-    Validity: YES - all structures allocated and linked
-    Who validates: kern_mount ensures validity
-
-RUNTIME PHASE (Who uses everything):
-  User calls: socket(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6)
-  
-  sock_alloc() execution:
-    Instruction +12: mov 0x18aa3a3(%rip), %rax
-      Loads: sock_mnt pointer (value stored at boot in STEP 3)
-      Validator: Linker computed offset at compile time
-      Status: VALID - sock_mnt initialized at boot
-    
-    Instruction +19: mov 0x8(%rax), %rdi
-      Loads: super_block pointer from vfsmount.mnt_sb
-      Validator: Linker computed offset, mount code set value
-      Status: VALID - super_block allocated at boot
-    
-    Instruction +23: call new_inode_pseudo
-      Argument: RDI = super_block pointer
-      Inside alloc_inode:
-        Load: sb->s_op (at offset 48)
-        Validator: Linker (set at compile time), mount code (wired at boot)
-        Status: VALID - points to sockfs_ops
-        Call: sb->s_op[0] = sock_alloc_inode (from sockfs_ops table)
-        Validator: Linker, mount code, compiler
-        Status: VALID - function exists at compile time
-      Inside sock_alloc_inode:
-        Call: kmem_cache_alloc(sock_inode_cachep)
-        Validator: Boot code set sock_inode_cachep, slab validates
-        Status: VALID - slab returns 768-byte block
-    
-    Instruction +36: lea -0x80(%rax), %r12
-      Calculation: R12 = RAX - 128 (inode pointer - 128 = socket pointer)
-      Offset -128: Compiled into instruction by gcc from socket_alloc struct
-      Validator: Compiler verified struct layout
-      Status: VALID - within allocated 768-byte block
-
-T_SOURCE:  Programmer writes C code with structures, function pointers
-T_COMPILE: gcc converts to machine code, creates symbol table and relocations
-           Linker resolves all symbols and validates addresses
-T_BOOT:    Kernel initializes: creates slab, registers FS, mounts sockfs, wires s_op
-           All pointers become valid, all function pointers point to real code
-T_RUNTIME: User calls socket(), kernel executes sock_alloc in 40 instructions
-           All pointers are used (loaded, dereferenced, followed to functions)
-
-COMPLETE PROVENANCE CHAIN:
-
-  sockfs_ops address (0xffffffff8276e500):
-    Source: sockfs_ops symbol in net/socket.c
-    Compiled: gcc outputs symbol in socket.o
-    Linked: ld resolves to 0xffffffff8276e500 in vmlinux
-    Stored: At boot, sb->s_op = &sockfs_ops wires this address into super_block
-    Used: Runtime, alloc_inode loads sb->s_op[0] = sock_alloc_inode from this address
-
-  sock_alloc_inode function address:
-    Source: sock_alloc_inode function in net/socket.c
-    Compiled: gcc outputs code and symbol in socket.o
-    Linked: ld resolves to 0xffffffff817f2a60 in vmlinux
-    Stored: In sockfs_ops table at offset 0 (set at link time)
-    Used: Runtime, call *[sockfs_ops + 0] jumps to this address
-
-  sock_inode_cachep pointer (slab cache):
-    Source: Global variable in net/socket.c
-    Created: boot time, init_inodecache() calls kmem_cache_create
-    Stored: Global variable sock_inode_cachep
-    Used: Runtime, sock_alloc_inode calls kmem_cache_alloc(sock_inode_cachep)
-
-  sock_mnt pointer (vfsmount):
-    Source: Global variable in net/socket.c
-    Created: boot time, kern_mount() allocates vfsmount
-    Stored: Global variable sock_mnt at 0xffffffff83a767a0
-    Used: Runtime, sock_alloc loads it with mov 0x18aa3a3(%rip), %rax
-
-THE SOCKET THAT EMERGES:
-  768-byte block allocated at runtime
-  Starts with socket structure (0-127 bytes)
-  Contains inode structure (128+ bytes)
-  Tracked in slab cache
-  Returned to user with all fields initialized
-  
-  Every pointer used above has been validated:
-  - At source: Programmer writes C syntax
-  - At compile: Compiler verifies correctness, creates relocations
-  - At link: Linker resolves symbols and validates addresses
   - At boot: Kernel initializes structures and wires function pointers
   - At runtime: All pointers are valid and functional
 
