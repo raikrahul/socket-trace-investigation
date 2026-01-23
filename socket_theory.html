@@ -126,14 +126,11 @@ Static Offsets = Compile-Time Bit Constants
         </div>
 
         <div class="row">
-            <div class="theory">
-                01. Resolution: `struct socket` (Net Container) cardinality = 128 bytes ✓.<br>
-                02. Resolution: `struct inode` (VFS Identity) cardinality = 624 bytes ✓.<br>
-                03. Calculus: Raw sum (128 + 624) yields 752 bytes ✓.<br>
-                04. Constraint: Hardware coherence requires $Size \pmod{64} \equiv 0$ ✓.<br>
-                05. Compensation: Linker inserts 16 bytes of padding to reach 768 boundary ✓.<br>
-                06. Verification: `sizeof(struct socket_alloc)` = 768 (Exactly 12 cache line hauls) ✓.<br>
-            </div>
+            01. Cardinality (Source): `struct socket` = 128B; `struct inode` = 624B ✓.<br>
+            02. Summation: 128 + 624 = 752 bytes (Base Payload) ✓.<br>
+            03. Geometry: Hardware cache lines are 64B wide ✓.<br>
+            04. DERIVATION OF THE NUMBER 768: `ceil(752 / 64) * 64 = 768` ✓.<br>
+            05. SEAL: Linker freezes this constant into the instruction stream as exactly 12 cache lines ✓.
             <div class="machine">
                 <pre><code class="language-bash">
 $ pahole -C socket vmlinux # 128
@@ -223,10 +220,13 @@ $ gdb -batch -ex "p/x sockfs_ops" vmlinux
             <div class="theory">
                 24. Trap: Userspace executes `socket(2, 1, 0)` via Syscall 41 ✓.<br>
                 25. Register Setup: `movl $2, %edi`, `movl $1, %esi`, `xorl %edx, %edx` ✓.<br>
-                26. Kernel Context: `__sys_socket(domain=2, type=1, protocol=0)` receives inputs ✓.<br>
-                27. Invocation: Kernel calls internal helper `sock_alloc()` with `void` arguments ✓.<br>
-                28. THE ERASURE: Load of `sock_mnt` address into RAX physically destroys RDI value (2) ✓.<br>
-                29. Result: The user's numbers {2, 1, 0} are erased before allocation ✓.
+                26. Invocation: Kernel calls internal helper `sock_alloc()` with `void` arguments ✓.<br>
+                27. DERIVATION OF THE ERASURE:
+                - State(T-n): RDI = 2 (User-provided AF_INET) ✓.<br>
+                - Constraint: RDI is the "Argument 1" register in System V ABI ✓.<br>
+                - Requirement: `new_inode_pseudo(sb)` needs sb-pointer in Argument 1 (RDI) ✓.<br>
+                - Action: `mov 0x8(%rax), %rdi` replaces 2 with sb-pointer ✓.<br>
+                28. Conclusion: The number 2 is physically destroyed to serve as the handle for allocation ✓.
             </div>
             <div class="machine">
                 <pre>

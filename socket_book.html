@@ -103,23 +103,6 @@ WHAT HAPPENS WHEN YOU CALL socket(2)
 
 Execution of socket() is a deterministic O(1) retrieval of 768 bytes from a boot-sealed Slab cache, physically erasing user-registers to regain logic-pointers via RIP-relative centaur arithmetic.
 
-DERIVATION OF THE NUMBER 768:
-----------------------------------------------------------------------
-01. struct socket size    = 128 bytes (proven by pahole)
-02. struct inode size     = 624 bytes (proven by pahole)
-03. Raw data sum          = 128 + 624 = 752 bytes
-04. CPU Cache Line (L1)   = 64 bytes
-∴ The 768-byte "sealed" size ensures cache-coherency for the centaur object.
-
-DERIVATION OF THE ERASURE (Why "2" becomes a pointer):
-----------------------------------------------------------------------
-01. State(T-n): RDI = 2 (User-provided AF_INET)
-02. Constraint: RDI is the "Argument 1" register in System V ABI
-03. Requirement: new_inode_pseudo(sb) needs sb-pointer in Argument 1 (RDI)
-04. Property: RDI is a single 64-bit cell; can only hold one law at a time
-05. Substitution: Operation 'mov 0x8(%rax), %rdi' replaces 2 with sb-pointer
-∴ The number 2 is physically destroyed to serve as the handle for allocation.
-
 ======================================================================
 AXIOM 0: C STRUCTURES, POINTERS, AND FUNCTION POINTERS
 ======================================================================
@@ -827,6 +810,16 @@ sock_init+93: mov    $0x300, %esi     # 0x300 = 768 decimal
 
 PROOF: sock_init() allocates cache with 768-byte objects (sizeof socket_alloc).
 
+DERIVATION OF THE NUMBER 768 (SEALED SIZE):
+----------------------------------------------------------------------
+01. struct socket size    = 128 bytes (proven by pahole)
+02. struct inode size     = 624 bytes (proven by pahole)
+03. Raw data sum          = 128 + 624 = 752 bytes
+04. CPU Cache Line (L1)   = 64 bytes
+05. Alignment Calculation = ceil(752 / 64) * 64
+06. Result                = 12 * 64 = 768
+∴ The 768-byte "sealed" size ensures cache-coherency for the centaur object.
+
 $ gdb -batch -ex "disassemble sock_init" /boot/vmlinuz-6.14.0-37-generic | \
   grep -A 2 "mov.*sock_mnt"
 
@@ -911,6 +904,15 @@ Example probe output (from full_chain_probe.c):
     RAX = [sock_mnt] (loaded in instruction 6 of disassembly)
     RDI = [RAX+8] = mnt_sb (loaded in instruction 19)
     User arguments (RDI, RSI, RDX) are ERASED
+
+DERIVATION OF THE ERASURE (Why "2" becomes a pointer):
+----------------------------------------------------------------------
+01. State(T-n): RDI = 2 (User-provided AF_INET)
+02. Constraint: RDI is the "Argument 1" register in System V ABI
+03. Requirement: new_inode_pseudo(sb) needs sb-pointer in Argument 1 (RDI)
+04. Property: RDI is a single 64-bit cell; can only hold one law at a time
+05. Substitution: Operation 'mov 0x8(%rax), %rdi' replaces 2 with sb-pointer
+∴ The number 2 is physically destroyed to serve as the handle for allocation.
 
 ================================================================================
 STAGE 10: FILESYSTEM REGISTRATION VERIFICATION
