@@ -220,7 +220,7 @@ EXECUTION OF sock_init():
   3. `sock_mnt` Assignment:
      - The address of the new vfsmount is stored in the global variable `sock_mnt`.
      - Verified Address: `0xffffffff83a767a0`.
-     * AXIOM (WHY?): GLOBAL STATE. When a user calls `socket()`, the kernel needs an instant reference to this virtual filesystem's root. Searching for it would be slow. Storing the pointer in a global variable allows the CPU to load it in ONE instruction (`mov rip+offset`), enabling raw speed.
+     * AXIOM (WHY?): SINGLETON ROOT. Your laptop has 46+ visible mounts (disks, snaps, proc), but `sockfs` is unique. It is an **internal, invisible filesystem** (verified: it does not appear in `/proc/mounts`). There is exactly ONE `sockfs` root for the entire machine, handling all sockets across all network cards. Because it is a singleton, we store its address globally (`sock_mnt`) to avoid searching for it, ensuring O(1) access.
 
   4. `netfilter_init()`:
      - Verified Address: `0xffffffff83b9d750`.
