@@ -99,42 +99,92 @@ THE BLUEPRINTS (net/socket.c):
 
 ----------------------------------------------------------------------
 
-PHASE 2: COMPILE & LINK (BINARY CONSTRUCTION)
+PHASE 2: COMPILATION & LINKING (BINARY CONSTRUCTION)
 ======================================================================
 
 STEP A: COMPILATION (gcc)
-  - GCC reads `net/socket.c`.
-  - It sees `sockfs_ops` uses `sock_alloc_inode`.
-  - It creates a relocation entry: "Put the address of sock_alloc_inode HERE".
-  - Output: `socket.o` (Relocatable Object).
+  Input: `net/socket.c` (Source Text)
+  
+  Actions:
+  1. Parse: GCC reads `sockfs_ops = { .alloc_inode = sock_alloc_inode }`.
+  2. Symbol Generation: Creates symbol `sockfs_ops` (address 0, section .data).
+  3. Reference Recording: Creates relocation entry `R_X86_64_64` for `sock_alloc_inode`.
+     - Relocation Type: Absolute 64-bit address.
+     - Meaning: "At offset +0 in `sockfs_ops`, write the final address of `sock_alloc_inode`."
+  4. Code Generation: Emits assembly for `sock_alloc_inode()` body.
 
-STEP B: LINKING (ld)
-  - LD combines `socket.o` with `fs/inode.o` etc.
-  - Calculations:
-    - `sock_alloc_inode` provided at address `0xffffffff821cc3f0`.
-    - `sockfs_ops` placed at data address `0xffffffff8276e740`.
-  - Action: LD writes `0xffffffff821cc3f0` into the first 8 bytes of `sockfs_ops`.
-  - Result: The function pointer is physically wired before boot.
+  Output: `net/socket.o` (ELF Relocatable Object)
 
-STEP C: RESOLVING EXTERNAL DEPENDENCIES (The Kernel Map)
-  `socket.o` is not a standalone island. It relies on the Kernel Core (VFS & MMU).
-  The Linker resolves these undefined symbols to absolute addresses (Verified via System.map).
+  Verification (Illustration):
+  $ readelf -r net/socket.o | grep sock_alloc_inode
+  000000000520  000a00000001 R_X86_64_64       sock_alloc_inode + 0
+  (Translation: "At byte offset 0x520, insert the 64-bit address of sock_alloc_inode.")
 
-  1. VFS INTEGRATION (To exist in the hierarchy):
-     - `register_filesystem` @ `0xffffffff817f6c00`
-       * Why: To add "sockfs" to the global list (/proc/filesystems).
-     - `kern_mount` @ `0xffffffff817fa260`
-       * Why: To create the `sock_mnt` anchor point.
-     - `new_inode_pseudo` @ `0xffffffff817f2bf0`
-       * Why: To allocate the "Base Class" (inode) for our socket object.
+STEP B: LINKING (ld via vmlinux.lds)
+  Input: `socket.o`, `fs/inode.o`, `mm/slub.o`, `vmlinux.lds`.
 
-  2. MEMORY MANAGEMENT (To exist physically):
-     - `kmem_cache_create` (@ `0xffffffff816cc730` as `__kmem_cache_create_args`)
-       * Why: To reserve the specialized 832-byte slab pool.
-     - `kmem_cache_alloc` (@ `0xffffffff8173afb0` as `kmem_cache_alloc_noprof`)
-       * Why: To grab a physical object from that pool at runtime.
+  Actions:
+  
+  B1. Section Placement:
+    - .text starts @ 0xffffffff81000000
+    - .data starts @ 0xffffffff83600000
+    - .bss  starts @ 0xffffffff83fb1000
 
-  * Implication: `net/socket.c` is hardwired to `fs/super.c` and `mm/slub.c` by these addresses.
+  B2. Symbol Resolution (Real Assignments):
+    - `sock_alloc_inode` → 0xffffffff821cc3f0 (in .text)
+    - `sockfs_ops`       → 0xffffffff8276e740 (in .data)
+    - `sock_mnt`         → 0xffffffff83a767a0 (in .data)
+
+  B3. Relocation Application:
+    - Target: `sockfs_ops` (0xffffffff8276e740).
+    - Source: `sock_alloc_inode` (0xffffffff821cc3f0).
+    - Action: Linker writes `0xffffffff821cc3f0` into the memory at `0xffffffff8276e740`.
+
+  Output: `vmlinux` (Static Executable).
+
+  Proof of Linkage:
+  $ gdb -batch -ex "x/gx 0xffffffff8276e740" vmlinux
+  0xffffffff8276e740: 0xffffffff821cc3f0
+  (The 64-bit value at sockfs_ops[0] IS the address of sock_alloc_inode).
+
+STEP C: EXTERNAL SYMBOL RESOLUTION
+  `socket.o` depends on symbols it does not define. The linker resolves them.
+
+  1. VFS Layer (fs/):
+     - `register_filesystem` -> 0xffffffff817f6c00 (fs/filesystems.o)
+     - `kern_mount`          -> 0xffffffff817fa260 (fs/namespace.o)
+     - `new_inode_pseudo`    -> 0xffffffff817f2bf0 (fs/inode.o)
+
+  2. Memory Management (mm/):
+     - `kmem_cache_create`   -> 0xffffffff816cc730 (mm/slab_common.o)
+     - `kmem_cache_alloc`    -> 0xffffffff8173afb0 (mm/slub.o - noprof alias)
+
+  3. Architecture (arch/x86):
+     - `__fentry__`          -> 0xffffffff8133c290 (ftrace hook)
+
+STEP D: VERIFICATION OF LINKAGE
+  
+  Before Linking (socket.o):
+  $ nm socket.o | grep sock_alloc_inode
+  ... T sock_alloc_inode
+  $ nm socket.o | grep register_filesystem
+  ... U register_filesystem  (Undefined)
+
+  After Linking (vmlinux):
+  $ nm vmlinux | grep register_filesystem
+  ffffffff817f6c00 T register_filesystem (Defined/Text)
+
+CRITICAL INSIGHT: WHY THIS MATTERS?
+  - Without linking, `socket.o` is a fragment with broken pointers ("U").
+  - After linking, every CALL instruction has a hardcoded absolute address.
+  - The Kernel is a SINGLE static binary. `kmem_cache_alloc` is at `0xffffffff8173afb0` forever.
+
+QUIZ:
+  1. `nm socket.o` for `sock_alloc_inode`? -> T (Defined in text).
+  2. If `sockfs_ops` moved to `0xffffffff82000000`? -> Yes, works. The linker updates the pointer value.
+  3. Distance `sock_mnt` - `sock_alloc`?
+     0x83a767a0 - 0x821cc3f0 = 0x18aa3b0 (25 MB). Fits in 32-bit signed offset (+-2GB).
+     Instruction: `mov 0x18aa3a3(%rip), %rax` (Note: %rip is next instr address).
 
 
 ----------------------------------------------------------------------
