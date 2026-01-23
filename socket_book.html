@@ -4,6 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <title>The Physical Layout of socket() in Linux: Analytical & Forensic Edition</title>
+
+    <!-- Highlight.js CSS (GitHub Dark Theme) -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+
     <style>
         :root {
             --bg-color: #fff;
@@ -67,19 +72,18 @@
             color: #1f6feb;
         }
 
-        /* C SYNTAX HIGHLIGHTING RULES */
-        .c-kw { color: #d73a49; font-weight: 600; }      /* Keywords: struct, void, if, etc */
-        .c-type { color: #6f42c1; font-weight: 600; }    /* Types: int, char, unsigned, etc */
-        .c-func { color: #005a9c; font-weight: 600; }    /* Function names */
-        .c-var { color: #24292e; }                       /* Variable names */
-        .c-str { color: #032f62; }                       /* String literals */
-        .c-num { color: #005cc5; }                       /* Numeric literals */
-        .c-comment { color: #6a737d; font-style: italic; } /* Comments */
-        .c-ptr { color: #d73a49; font-weight: 600; }     /* Pointer operators: *, &, -> */
-        .c-op { color: #d73a49; }                        /* Operators: +, -, =, etc */
-        .c-cast { color: #6f42c1; }                      /* Type casts: (struct type) */
-        .c-offset { color: #005cc5; font-weight: 600; }  /* Offsets and addresses */
-        .c-macro { color: #6f42c1; }                     /* Macros: GFP_KERNEL, etc */
+        /* HIGHLIGHT.JS INTEGRATION */
+        pre {
+            margin: 0;
+            padding: 0;
+        }
+
+        code {
+            font-family: var(--font-mono);
+            display: block;
+            padding: 0 !important;
+            background: transparent !important;
+        }
     </style>
 </head>
 
@@ -89,8 +93,7 @@
 
         <!-- LEFT SIDE: ANALYTICAL RESEARCH PAPER (THEORY) -->
         <div class="academic-pane">
-            <pre
-                style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
+            <pre><code class="language-plaintext">
 ================================================================================
 FORENSIC AUDIT: THE VFS-SOCKET EMBEDDING
 ================================================================================
@@ -1840,13 +1843,12 @@ VERIFICATION COMMANDS:
   gdb -batch -ex "disassemble sock_alloc"     # Machine code
   cat /proc/slabinfo | grep sock_inode        # Live slab stats
   cat /proc/filesystems | grep sockfs         # FS registered
-            </pre>
+            </code></pre>
         </div>
 
         <!-- RIGHT SIDE: FORENSIC MACHINE PROOFS (COMMANDS) -->
         <div class="forensic-pane">
-            <pre
-                style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
+            <pre><code class="language-bash">
 ================================================================================
 STAGE 0: KERNEL VERSION AND ENVIRONMENT VERIFICATION
 ================================================================================
@@ -2148,5 +2150,11 @@ CONCLUSION:
   
   The socket_alloc embedding and centaur arithmetic are not abstractions.
   They are physical facts of the Linux kernel, proven at every layer.
+            </code></pre>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
 </body>
+
 </html>
