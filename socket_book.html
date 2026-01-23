@@ -93,7 +93,7 @@
 
         <!-- LEFT SIDE: ANALYTICAL RESEARCH PAPER (THEORY) -->
         <div class="academic-pane">
-            <pre><code class="language-plaintext">
+            <pre><code class="language-c">
 ================================================================================
 FORENSIC AUDIT: THE VFS-SOCKET EMBEDDING
 ================================================================================
@@ -111,9 +111,9 @@ C SYNTAX RULES AND CONVENTIONS (For Reading This Document)
 ================================================================================
 
 RULE 1: STRUCTURE DEFINITION
-  <span class="c-kw">struct</span> <span class="c-type">socket_alloc</span> {
-      <span class="c-type">struct socket</span> socket;        <span class="c-comment">/* Embedded at offset 0 */</span>
-      <span class="c-type">struct inode</span> vfs_inode;      <span class="c-comment">/* Embedded at offset 128 */</span>
+  struct socket_alloc {
+      struct socket socket;        /* Embedded at offset 0 */
+      struct inode vfs_inode;      /* Embedded at offset 128 */
   };
 
   READ AS: "Define a structure named socket_alloc containing two embedded structs"
@@ -122,79 +122,79 @@ RULE 1: STRUCTURE DEFINITION
   COMMENT: /* ... */ = human explanation (compiler ignores)
 
 RULE 2: POINTER DECLARATION
-  <span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb;
-  <span class="c-type">const struct super_operations</span> <span class="c-ptr">*</span>s_op;
+  struct super_block *sb;
+  const struct super_operations *s_op;
 
   READ AS: "sb is a pointer to struct super_block" 
   POINTER OPERATOR: * = "pointer to" (address of a memory location)
   const = value cannot be changed after initialization
   
 RULE 3: FUNCTION POINTER IN STRUCTURE
-  <span class="c-type">struct inode</span> <span class="c-ptr">(*</span><span class="c-func">alloc_inode</span><span class="c-ptr">)(struct super_block *</span>sb<span class="c-ptr">)</span>;
+  struct inode (*alloc_inode)(struct super_block *sb);
 
   READ AS: "alloc_inode is a function pointer that takes (struct super_block *) and returns struct inode *"
   FORMAT: return_type (*name)(parameters);
   CALL: result = ops->alloc_inode(sb);  OR  result = (*ops->alloc_inode)(sb);
 
 RULE 4: CASTING (Type Conversion)
-  <span class="c-cast">(<span class="c-type">char</span><span class="c-ptr">*</span>)</span>inode_ptr <span class="c-op">-</span> 128;
+  (char*)inode_ptr - 128;
 
   READ AS: "Cast inode_ptr to char pointer, then subtract 128"
   CAST: (type)value = convert value to specified type
   Why char*? Because char is 1 byte, so arithmetic is predictable
 
 RULE 5: OFFSET ADDRESSES
-  Offset 0:   <span class="c-offset">0xffffffff821cc400</span> = First field (alloc_inode)
-  Offset 8:   <span class="c-offset">0xffffffff821cc408</span> = Second field (destroy_inode)
-  Offset 16:  <span class="c-offset">0xffffffff821cc410</span> = Third field (free_inode)
+  Offset 0:   0xffffffff821cc400 = First field (alloc_inode)
+  Offset 8:   0xffffffff821cc408 = Second field (destroy_inode)
+  Offset 16:  0xffffffff821cc410 = Third field (free_inode)
 
   READ AS: "At memory address 0x... offset 8, the next function pointer begins"
   CALCULATION: Address + Offset = field location in memory
   WHY 8? Because pointers are 8 bytes on 64-bit x86_64
 
 RULE 6: MACRO DEFINITIONS
-  <span class="c-macro">GFP_KERNEL</span> = allocation flag (use kernel memory, can sleep)
-  <span class="c-macro">GFP_ATOMIC</span> = allocation flag (must not sleep, use interrupt-safe pool)
-  <span class="c-macro">CONFIG_SECURITY</span> = compile-time configuration option
+  GFP_KERNEL = allocation flag (use kernel memory, can sleep)
+  GFP_ATOMIC = allocation flag (must not sleep, use interrupt-safe pool)
+  CONFIG_SECURITY = compile-time configuration option
 
   READ AS: "These are preprocessor constants (#define)"
   MACRO: All uppercase, defined at compile time
   VALUE: Compiler replaces macro with its definition before actual compilation
 
 RULE 7: INLINE ASSEMBLY (lea, mov, call)
-  <span class="c-kw">lea</span>    -0x80(<span class="c-ptr">%</span>rax), <span class="c-ptr">%</span>r12
+  lea    -0x80(%rax), %r12
   READ AS: "Load Effective Address: R12 = RAX - 128"
   
-  <span class="c-kw">mov</span>    0x18aa3a3(<span class="c-ptr">%</span>rip), <span class="c-ptr">%</span>rax
+  mov    0x18aa3a3(%rip), %rax
   READ AS: "Move RIP-relative address into RAX"
   RIP = Instruction Pointer (current code location)
   Parentheses = memory dereference
 
 RULE 8: OPERATOR PRECEDENCE AND ASSOCIATION
-  <span class="c-ptr">-></span> (arrow)    = dereference and member access (ptr->field)
-  <span class="c-ptr">.</span> (dot)      = direct member access (struct.field)
-  <span class="c-op">*</span> (asterisk)  = dereference pointer (*ptr)
-  <span class="c-op">&</span> (ampersand) = address-of (get pointer to variable)
+  -> (arrow)    = dereference and member access (ptr->field)
+  . (dot)      = direct member access (struct.field)
+  * (asterisk)  = dereference pointer (*ptr)
+  & (ampersand) = address-of (get pointer to variable)
   
   EXAMPLE:
-    struct super_block *sb;          <span class="c-comment">/* sb is a pointer */</span>
-    sb->s_op;                        <span class="c-comment">/* Access s_op field through pointer */</span>
-    struct super_block sb2;          <span class="c-comment">/* sb2 is the actual struct */</span>
-    sb2.s_op;                        <span class="c-comment">/* Access s_op field directly */</span>
+    struct super_block *sb;          /* sb is a pointer */
+    sb->s_op;                        /* Access s_op field through pointer */
+    struct super_block sb2;          /* sb2 is the actual struct */
+    sb2.s_op;                        /* Access s_op field directly */
 
 RULE 9: COMMON KERNEL TYPES
-  <span class="c-type">dev_t</span> = Device ID (major, minor)
-  <span class="c-type">loff_t</span> = Long Offset (for file sizes)
-  <span class="c-type">atomic_t</span> = Atomic integer (thread-safe)
-  <span class="c-type">gfp_t</span> = Memory allocation flags
-  <span class="c-type">uuid_t</span> = 16-byte UUID structure
+  dev_t = Device ID (major, minor)
+  loff_t = Long Offset (for file sizes)
+  atomic_t = Atomic integer (thread-safe)
+  gfp_t = Memory allocation flags
+  uuid_t = 16-byte UUID structure
 
 RULE 10: READ THIS CODE BLOCK CORRECTLY
-  <span class="c-kw">static struct inode</span> <span class="c-ptr">*</span><span class="c-func">alloc_inode</span>(<span class="c-kw">struct super_block</span> <span class="c-ptr">*</span>sb) {
-      <span class="c-kw">const struct super_operations</span> <span class="c-ptr">*</span>ops <span class="c-op">=</span> sb<span class="c-ptr">-></span>s_op;
-      <span class="c-kw">if</span> (ops<span class="c-ptr">-></span>alloc_inode)
-          <span class="c-kw">return</span> ops<span class="c-ptr">-></span>alloc_inode(sb);
-      <span class="c-kw">return</span> alloc_inode_sb(sb, ...);
+  static struct inode *alloc_inode(struct super_block *sb) {
+      const struct super_operations *ops = sb->s_op;
+      if (ops->alloc_inode)
+          return ops->alloc_inode(sb);
+      return alloc_inode_sb(sb, ...);
   }
 
   PARSING FROM LEFT TO RIGHT:
@@ -225,25 +225,25 @@ AXIOM 0: THE IDENTITY OF THE SUPER_BLOCK
 EXACT KERNEL DEFINITION OF struct super_block:
 (From /usr/src/linux-source-6.8.0/include/linux/fs.h:1199)
 
-<span class="c-kw">struct</span> <span class="c-type">super_block</span> {
-        <span class="c-type">struct list_head</span>        s_list;             <span class="c-comment">/* Keep this first */</span>
-        <span class="c-type">dev_t</span>                   s_dev;              <span class="c-comment">/* search index; _not_ kdev_t */</span>
-        <span class="c-type">unsigned char</span>           s_blocksize_bits;
-        <span class="c-type">unsigned long</span>           s_blocksize;        <span class="c-comment">/* Filesystem block size */</span>
-        <span class="c-type">loff_t</span>                  s_maxbytes;         <span class="c-comment">/* Max file size */</span>
-        <span class="c-type">struct file_system_type</span> <span class="c-ptr">*</span>s_type;            <span class="c-comment">/* Type (ext4, btrfs, tmpfs, etc.) */</span>
-        <span class="c-kw">const</span> <span class="c-type">struct super_operations</span>   <span class="c-ptr">*</span>s_op;      <span class="c-comment">/* OFFSET 48: Operations table (THE LAW BOOK) */</span>
-        <span class="c-kw">const</span> <span class="c-type">struct dquot_operations</span>   <span class="c-ptr">*</span>dq_op;     <span class="c-comment">/* Quota operations */</span>
-        <span class="c-kw">const</span> <span class="c-type">struct quotactl_ops</span>       <span class="c-ptr">*</span>s_qcop;
-        <span class="c-kw">const</span> <span class="c-type">struct export_operations</span> <span class="c-ptr">*</span>s_export_op;
-        <span class="c-type">unsigned long</span>           s_flags;
-        <span class="c-type">unsigned long</span>           s_iflags;           <span class="c-comment">/* internal SB_I_* flags */</span>
-        <span class="c-type">unsigned long</span>           s_magic;            <span class="c-comment">/* Filesystem magic number */</span>
-        <span class="c-type">struct dentry</span>           <span class="c-ptr">*</span>s_root;            <span class="c-comment">/* Root directory entry */</span>
-        <span class="c-type">struct rw_semaphore</span>     s_umount;           <span class="c-comment">/* For mount/unmount locking */</span>
-        <span class="c-type">int</span>                     s_count;            <span class="c-comment">/* Reference count */</span>
-        <span class="c-type">atomic_t</span>                s_active;           <span class="c-comment">/* Active count */</span>
-        <span class="c-type">void</span>                    <span class="c-ptr">*</span>s_security;        <span class="c-comment">/* Security context */</span>
+struct super_block {
+        struct list_head        s_list;             /* Keep this first */
+        dev_t                   s_dev;              /* search index; _not_ kdev_t */
+        unsigned char           s_blocksize_bits;
+        unsigned long           s_blocksize;        /* Filesystem block size */
+        loff_t                  s_maxbytes;         /* Max file size */
+        struct file_system_type *s_type;            /* Type (ext4, btrfs, tmpfs, etc.) */
+        const struct super_operations   *s_op;      /* OFFSET 48: Operations table (THE LAW BOOK) */
+        const struct dquot_operations   *dq_op;     /* Quota operations */
+        const struct quotactl_ops       *s_qcop;
+        const struct export_operations *s_export_op;
+        unsigned long           s_flags;
+        unsigned long           s_iflags;           /* internal SB_I_* flags */
+        unsigned long           s_magic;            /* Filesystem magic number */
+        struct dentry           *s_root;            /* Root directory entry */
+        struct rw_semaphore     s_umount;           /* For mount/unmount locking */
+        int                     s_count;            /* Reference count */
+        atomic_t                s_active;           /* Active count */
+        void                    *s_security;        /* Security context */
         const struct xattr_handler * const *s_xattr; /* Extended attributes */
         struct hlist_bl_head    s_roots;            /* alternate root dentries for NFS */
         struct list_head        s_mounts;           /* list of mounts */
@@ -293,16 +293,16 @@ TOTAL SIZE: Approximately 560-768 bytes (varies with CONFIG options like CONFIG_
 struct super_operations (THE LAW BOOK):
 (From /usr/src/linux-source-6.8.0/include/linux/fs.h:2136)
 
-<span class="c-kw">struct</span> <span class="c-type">super_operations</span> {
-        <span class="c-type">struct inode</span> <span class="c-ptr">*(*</span><span class="c-func">alloc_inode</span><span class="c-ptr">)(struct super_block *sb);     </span><span class="c-comment">/* Offset 0 */</span>
-        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">destroy_inode</span><span class="c-ptr">)(struct inode *);                    </span><span class="c-comment">/* Offset 8 */</span>
-        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">free_inode</span><span class="c-ptr">)(struct inode *);                       </span><span class="c-comment">/* Offset 16 */</span>
-        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">dirty_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>, <span class="c-type">int</span> flags);          <span class="c-comment">/* Offset 24 */</span>
-        <span class="c-type">int</span> <span class="c-ptr">(*</span><span class="c-func">write_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>, <span class="c-type">struct writeback_control</span> <span class="c-ptr">*</span>wbc);
-        <span class="c-type">int</span> <span class="c-ptr">(*</span><span class="c-func">drop_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>);
-        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">evict_inode</span><span class="c-ptr">)</span> (<span class="c-type">struct inode</span> <span class="c-ptr">*</span>);
-        <span class="c-type">void</span> <span class="c-ptr">(*</span><span class="c-func">put_super</span><span class="c-ptr">)</span> (<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>);
-        <span class="c-type">int</span> <span class="c-ptr">(*</span><span class="c-func">sync_fs</span><span class="c-ptr">)(struct super_block *</span>sb, <span class="c-type">int</span> wait, <span class="c-type">void</span> <span class="c-ptr">*</span>wbc);
+struct super_operations {
+        struct inode *(*alloc_inode)(struct super_block *sb);     /* Offset 0 */
+        void (*destroy_inode)(struct inode *);                    /* Offset 8 */
+        void (*free_inode)(struct inode *);                       /* Offset 16 */
+        void (*dirty_inode) (struct inode *, int flags);          /* Offset 24 */
+        int (*write_inode) (struct inode *, struct writeback_control *wbc);
+        int (*drop_inode) (struct inode *);
+        void (*evict_inode) (struct inode *);
+        void (*put_super) (struct super_block *);
+        int (*sync_fs)(struct super_block *sb, int wait, void *wbc);
         int (*freeze_super) (struct super_block *);
         int (*freeze_fs) (struct super_block *);
         int (*thaw_super) (struct super_block *);
@@ -385,48 +385,48 @@ DEFINITION: A structure can be embedded within another structure.
 
 EXACT KERNEL DEFINITION (from /usr/src/linux-source-6.8.0/include/net/sock.h:1555):
 
-  <span class="c-kw">struct</span> <span class="c-type">socket_alloc</span> {
-      <span class="c-type">struct socket</span> socket;      <span class="c-comment">/* Embedded at offset 0 */</span>
-      <span class="c-type">struct inode</span> vfs_inode;    <span class="c-comment">/* Embedded at offset 128 (0x80 in hex) */</span>
+  struct socket_alloc {
+      struct socket socket;      /* Embedded at offset 0 */
+      struct inode vfs_inode;    /* Embedded at offset 128 (0x80 in hex) */
   };
 
 CONSEQUENCE:
   If you have a pointer to socket_alloc->vfs_inode (at offset 128), you can
   derive a pointer to the containing socket_alloc structure by subtracting 128:
   
-    socket_alloc_ptr <span class="c-op">=</span> <span class="c-cast">(<span class="c-type">char</span><span class="c-ptr">*</span>)</span>inode_ptr <span class="c-op">-</span> 128
+    socket_alloc_ptr = (char*)inode_ptr - 128
 
 EXACT CODE PATH - HOW sock_alloc_inode() RETURNS THE INODE POINTER:
 
 SOURCE: /usr/src/linux-source-6.8.0/net/socket.c:304-321
 
-  304: <span class="c-kw">static</span> <span class="c-type">struct inode</span> <span class="c-ptr">*</span><span class="c-func">sock_alloc_inode</span>(<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb)
+  304: static struct inode *sock_alloc_inode(struct super_block *sb)
   305: {
-  306:     <span class="c-type">struct socket_alloc</span> <span class="c-ptr">*</span>ei;
+  306:     struct socket_alloc *ei;
   307:
-  308:     ei <span class="c-op">=</span> <span class="c-func">alloc_inode_sb</span>(sb, sock_inode_cachep, <span class="c-macro">GFP_KERNEL</span>);
-  309:     <span class="c-kw">if</span> (!ei)
-  310:         <span class="c-kw">return</span> <span class="c-kw">NULL</span>;
-  311:     <span class="c-func">init_waitqueue_head</span>(&ei<span class="c-ptr">-></span>socket.wq.wait);
-  312:     ei<span class="c-ptr">-></span>socket.wq.fasync_list <span class="c-op">=</span> <span class="c-kw">NULL</span>;
-  313:     ei<span class="c-ptr">-></span>socket.wq.flags <span class="c-op">=</span> <span class="c-num">0</span>;
+  308:     ei = alloc_inode_sb(sb, sock_inode_cachep, GFP_KERNEL);
+  309:     if (!ei)
+  310:         return NULL;
+  311:     init_waitqueue_head(&ei->socket.wq.wait);
+  312:     ei->socket.wq.fasync_list = NULL;
+  313:     ei->socket.wq.flags = 0;
   314:
-  315:     ei<span class="c-ptr">-></span>socket.state <span class="c-op">=</span> SS_UNCONNECTED;
-  316:     ei<span class="c-ptr">-></span>socket.flags <span class="c-op">=</span> <span class="c-num">0</span>;
-  317:     ei<span class="c-ptr">-></span>socket.ops <span class="c-op">=</span> <span class="c-kw">NULL</span>;
-  318:     ei<span class="c-ptr">-></span>socket.sk <span class="c-op">=</span> <span class="c-kw">NULL</span>;
-  319:     ei<span class="c-ptr">-></span>socket.file <span class="c-op">=</span> <span class="c-kw">NULL</span>;
+  315:     ei->socket.state = SS_UNCONNECTED;
+  316:     ei->socket.flags = 0;
+  317:     ei->socket.ops = NULL;
+  318:     ei->socket.sk = NULL;
+  319:     ei->socket.file = NULL;
   320:
-  321:     <span class="c-kw">return</span> &ei<span class="c-ptr">-></span>vfs_inode;   <span class="c-comment"><<< LINE 321: RETURNS INODE POINTER AT OFFSET 128</span>
+  321:     return &ei->vfs_inode;   <<< LINE 321: RETURNS INODE POINTER AT OFFSET 128
   322: }
 
 WHAT DOES alloc_inode_sb() RETURN?
 
 SOURCE: /usr/src/linux-source-6.8.0/include/linux/fs.h:3033-3036
 
-  3033: <span class="c-func">alloc_inode_sb</span>(<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb, <span class="c-type">struct kmem_cache</span> <span class="c-ptr">*</span>cache, <span class="c-type">gfp_t</span> gfp)
+  3033: alloc_inode_sb(struct super_block *sb, struct kmem_cache *cache, gfp_t gfp)
   3034: {
-  3035:     <span class="c-kw">return</span> <span class="c-func">kmem_cache_alloc_lru</span>(cache, &sb<span class="c-ptr">-></span>s_inode_lru, gfp);
+  3035:     return kmem_cache_alloc_lru(cache, &sb->s_inode_lru, gfp);
   3036: }
 
 THE CALLER: WHO CALLS alloc_inode_sb() AND WHY?
@@ -453,15 +453,15 @@ INDIRECT CALLER: alloc_inode() (VFS generic allocator)
 
 SOURCE: /usr/src/linux-source-6.8.0/fs/inode.c:254-275
 
-  254: <span class="c-kw">static</span> <span class="c-type">struct inode</span> <span class="c-ptr">*</span><span class="c-func">alloc_inode</span>(<span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb)
+  254: static struct inode *alloc_inode(struct super_block *sb)
   255: {
-  256:     <span class="c-kw">const</span> <span class="c-type">struct super_operations</span> <span class="c-ptr">*</span>ops <span class="c-op">=</span> sb<span class="c-ptr">-></span>s_op;
-  257:     <span class="c-type">struct inode</span> <span class="c-ptr">*</span>inode;
+  256:     const struct super_operations *ops = sb->s_op;
+  257:     struct inode *inode;
   258:
-  259:     <span class="c-kw">if</span> (ops<span class="c-ptr">-></span>alloc_inode)
-  260:         inode <span class="c-op">=</span> ops<span class="c-ptr">-></span>alloc_inode(sb);  <span class="c-comment"><<< CALLS sock_alloc_inode() via function pointer</span>
-  261:     <span class="c-kw">else</span>
-  262:         inode <span class="c-op">=</span> <span class="c-func">alloc_inode_sb</span>(sb, inode_cachep, <span class="c-macro">GFP_KERNEL</span>);
+  259:     if (ops->alloc_inode)
+  260:         inode = ops->alloc_inode(sb);  <<< CALLS sock_alloc_inode() via function pointer
+  261:     else
+  262:         inode = alloc_inode_sb(sb, inode_cachep, GFP_KERNEL);
   263:
   264:     if (!inode)
   265:         return NULL;
@@ -676,16 +676,16 @@ BREAKDOWN OF EACH PART:
 
 STEP-BY-STEP EXECUTION:
 
-  Before: RAX = <span class="addr">0x1234567890ABC000</span> (some address, specifically &ei->vfs_inode)
+  Before: RAX = <span class="addr">0x1234567890ABC000 (some address, specifically &ei->vfs_inode)
   
   Instruction: lea -0x80(%rax), %r12
   
-  Step 1: Take value in RAX: <span class="addr">0x1234567890ABC000</span>
-  Step 2: Subtract 0x80 (128):  <span class="addr">0x1234567890ABC000</span> - 0x80
-  Step 3: Compute result:       <span class="addr">0x1234567890ABB80</span>
-  Step 4: Store in R12:         R12 = <span class="addr">0x1234567890ABF80</span>
+  Step 1: Take value in RAX: <span class="addr">0x1234567890ABC000
+  Step 2: Subtract 0x80 (128):  <span class="addr">0x1234567890ABC000 - 0x80
+  Step 3: Compute result:       <span class="addr">0x1234567890ABB80
+  Step 4: Store in R12:         R12 = <span class="addr">0x1234567890ABF80
   
-  After: R12 = <span class="addr">0x1234567890ABF80</span> (which is &ei->socket, offset 0)
+  After: R12 = <span class="addr">0x1234567890ABF80 (which is &ei->socket, offset 0)
 
 WHY lea (NOT mov or add):
 
@@ -778,7 +778,7 @@ A function pointer variable HOLDS AN ADDRESS:
   };
 
 After this assignment:
-  sockfs_ops.alloc_inode = <span class="addr">0xffffffff821cc400</span>  (example address of sock_alloc_inode function)
+  sockfs_ops.alloc_inode = <span class="addr">0xffffffff821cc400  (example address of sock_alloc_inode function)
 
 AXIOM 2C: HOW DO WE CALL A FUNCTION THROUGH A POINTER?
 
@@ -1686,14 +1686,14 @@ TRACE FORMAT: #Step | Address | Instruction | Registers Before | Work | Register
 #2  | +5   | push %rbp                          | RSP=stack                   | Save frame pointer  | RSP-=8
 #3  | +6   | mov 0x18aa3a3(%rip),%rax           | RAX=?                       | LOAD sock_mnt       | RAX=0xffff...(sock_mnt value)
      |      |                                    |                             | RIP-relative load   |
-     |      | # <span class="addr">0xffffffff83a767a0</span> <sock_mnt>    |                             | O(1) anchor access  |
+     |      | # <span class="addr">0xffffffff83a767a0 <sock_mnt>    |                             | O(1) anchor access  |
 #4  | +13  | mov %rsp,%rbp                      | RBP=old                     | Setup frame         | RBP=RSP
 #5  | +16  | push %r12                          | R12=?                       | Save callee-saved   | RSP-=8
 #6  | +18  | push %rbx                          | RBX=?                       | Save callee-saved   | RSP-=8
 #7  | +19  | mov 0x8(%rax),%rdi                 | RAX=sock_mnt                | Load mnt_sb         | RDI=sock_mnt->mnt_sb
      |      |                                    | RDI=? (USER ARG ERASED!)    | offset 8 in vfsmount| RDI=super_block*
 #8  | +23  | call new_inode_pseudo              | RDI=super_block*            | Allocate inode      | RAX=&socket_alloc->vfs_inode
-     |      | # <span class="addr">0xffffffff817f2bf0</span>               |                             | Calls alloc_inode   | or NULL on failure
+     |      | # <span class="addr">0xffffffff817f2bf0               |                             | Calls alloc_inode   | or NULL on failure
 #9  | +28  | test %rax,%rax                     | RAX=inode* or NULL          | Check NULL          | ZF set if NULL
 #10 | +31  | je sock_alloc+117                  | ZF=?                        | Jump if NULL        | -
 #11 | +33  | mov %rax,%rbx                      | RAX=inode*                  | Save inode ptr      | RBX=inode*
@@ -1971,9 +1971,9 @@ SYMBOL MEANINGS:
   b = bss section (zero-initialized at boot)
 
 LOCATIONS IN KERNEL IMAGE:
-  sock_fs_type @ <span class="addr">0xffffffff839c2dc0</span> (in .data section)
-  sockfs_ops   @ <span class="addr">0xffffffff8276e740</span> (in .data section)
-  sock_mnt     @ <span class="addr">0xffffffff83a767a0</span> (in .bss section, initially NULL)
+  sock_fs_type @ <span class="addr">0xffffffff839c2dc0 (in .data section)
+  sockfs_ops   @ <span class="addr">0xffffffff8276e740 (in .data section)
+  sock_mnt     @ <span class="addr">0xffffffff83a767a0 (in .bss section, initially NULL)
 
 ================================================================================
 STAGE 5: FUNCTION POINTER VERIFICATION (gdb - Live Binary Inspection)
@@ -1982,11 +1982,11 @@ STAGE 5: FUNCTION POINTER VERIFICATION (gdb - Live Binary Inspection)
 $ gdb -batch -ex "file /boot/vmlinuz-6.14.0-37-generic" \
   -ex "x/2gx 0xffffffff8276e740" /boot/vmlinuz-6.14.0-37-generic
 
-<span class="addr">0xffffffff8276e740</span>:     <span class="addr">0xffffffff821cc3f0</span>      <span class="addr">0xffffffff821cc4b0</span>
+<span class="addr">0xffffffff8276e740:     <span class="addr">0xffffffff821cc3f0      <span class="addr">0xffffffff821cc4b0
 
 DECODE:
-  At offset 0: <span class="addr">0xffffffff821cc3f0</span> = address of sock_alloc_inode (alloc_inode field)
-  At offset 8: <span class="addr">0xffffffff821cc4b0</span> = address of sock_free_inode (free_inode field)
+  At offset 0: <span class="addr">0xffffffff821cc3f0 = address of sock_alloc_inode (alloc_inode field)
+  At offset 8: <span class="addr">0xffffffff821cc4b0 = address of sock_free_inode (free_inode field)
 
 $ nm /boot/vmlinux-6.14.0-37-generic | grep -E "sock_alloc_inode|sock_free_inode"
 ffffffff821cc3f0 t sock_alloc_inode
@@ -2019,27 +2019,27 @@ STAGE 7: DISASSEMBLY - sock_alloc() CENTAUR ARITHMETIC
 $ gdb -batch -ex "disassemble sock_alloc" /boot/vmlinuz-6.14.0-37-generic
 
 Dump of assembler code for function sock_alloc:
-   <span class="addr">0xffffffff821cc3f0</span> <+0>:     call   <span class="addr">0xffffffff8133c290</span> <__fentry__>
-   <span class="addr">0xffffffff821cc3f5</span> <+5>:     push   %rbp
-   <span class="addr">0xffffffff821cc3f6</span> <+6>:     mov    0x18aa3a3(%rip),%rax        # Load sock_mnt
-   <span class="addr">0xffffffff821cc3fd</span> <+13>:    mov    %rsp,%rbp
-   <span class="addr">0xffffffff821cc400</span> <+16>:    push   %r12
-   <span class="addr">0xffffffff821cc402</span> <+18>:    push   %rbx
-   <span class="addr">0xffffffff821cc403</span> <+19>:    mov    0x8(%rax),%rdi              # Load mnt_sb
-   <span class="addr">0xffffffff821cc407</span> <+23>:    call   <span class="addr">0xffffffff817f2bf0</span> <new_inode_pseudo>
-   <span class="addr">0xffffffff821cc40c</span> <+28>:    test   %rax,%rax
-   <span class="addr">0xffffffff821cc40f</span> <+31>:    je     <span class="addr">0xffffffff821cc465</span> <sock_alloc+117>
-   <span class="addr">0xffffffff821cc411</span> <+33>:    mov    %rax,%rbx
-   <span class="addr">0xffffffff821cc414</span> <+36>:    lea    -0x80(%rax),%r12           # CENTAUR: R12 = RAX - 128
-   <span class="addr">0xffffffff821cc418</span> <+40>:    call   <span class="addr">0xffffffff817edb80</span> <get_next_ino>
+   <span class="addr">0xffffffff821cc3f0 <+0>:     call   <span class="addr">0xffffffff8133c290 <__fentry__>
+   <span class="addr">0xffffffff821cc3f5 <+5>:     push   %rbp
+   <span class="addr">0xffffffff821cc3f6 <+6>:     mov    0x18aa3a3(%rip),%rax        # Load sock_mnt
+   <span class="addr">0xffffffff821cc3fd <+13>:    mov    %rsp,%rbp
+   <span class="addr">0xffffffff821cc400 <+16>:    push   %r12
+   <span class="addr">0xffffffff821cc402 <+18>:    push   %rbx
+   <span class="addr">0xffffffff821cc403 <+19>:    mov    0x8(%rax),%rdi              # Load mnt_sb
+   <span class="addr">0xffffffff821cc407 <+23>:    call   <span class="addr">0xffffffff817f2bf0 <new_inode_pseudo>
+   <span class="addr">0xffffffff821cc40c <+28>:    test   %rax,%rax
+   <span class="addr">0xffffffff821cc40f <+31>:    je     <span class="addr">0xffffffff821cc465 <sock_alloc+117>
+   <span class="addr">0xffffffff821cc411 <+33>:    mov    %rax,%rbx
+   <span class="addr">0xffffffff821cc414 <+36>:    lea    -0x80(%rax),%r12           # CENTAUR: R12 = RAX - 128
+   <span class="addr">0xffffffff821cc418 <+40>:    call   <span class="addr">0xffffffff817edb80 <get_next_ino>
    ...
-   <span class="addr">0xffffffff821cc455</span> <+101>:   mov    %r12,%rax                   # Return socket pointer
-   <span class="addr">0xffffffff821cc458</span> <+104>:   pop    %rbx
-   <span class="addr">0xffffffff821cc459</span> <+105>:   pop    %r12
-   <span class="addr">0xffffffff821cc45b</span> <+107>:   pop    %rbp
-   <span class="addr">0xffffffff821cc45c</span> <+108>:   xor    %edx,%edx
-   <span class="addr">0xffffffff821cc45e</span> <+110>:   xor    %edi,%edi
-   <span class="addr">0xffffffff821cc460</span> <+112>:   jmp    <span class="addr">0xffffffff824f4af0</span> <__x86_return_thunk>
+   <span class="addr">0xffffffff821cc455 <+101>:   mov    %r12,%rax                   # Return socket pointer
+   <span class="addr">0xffffffff821cc458 <+104>:   pop    %rbx
+   <span class="addr">0xffffffff821cc459 <+105>:   pop    %r12
+   <span class="addr">0xffffffff821cc45b <+107>:   pop    %rbp
+   <span class="addr">0xffffffff821cc45c <+108>:   xor    %edx,%edx
+   <span class="addr">0xffffffff821cc45e <+110>:   xor    %edi,%edi
+   <span class="addr">0xffffffff821cc460 <+112>:   jmp    <span class="addr">0xffffffff824f4af0 <__x86_return_thunk>
 
 KEY INSTRUCTION:
    0xffffffff821cc414 <+36>:    lea    -0x80(%rax),%r12
