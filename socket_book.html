@@ -107,20 +107,11 @@ Build:   gcc-13.3.0, GNU ld 2.42
 Date:    2026-01-23
 
 ================================================================================
-PREAMBLE: FOUNDATIONAL CONCEPTS (Teaching from First Principles)
 ================================================================================
 
 ================================================================================
 AXIOM 0: THE IDENTITY OF THE SUPER_BLOCK
 ================================================================================
-01. Memory = cells.
-02. A filesystem = a specific set of logic (Law) applied to these cells.
-03. The `super_block` = the Root Identity Card for a filesystem instance.
-04. Property: Offset 48 of `super_block` is `s_op`.
-05. `s_op` = Pointer to a Table of Laws (`struct super_operations`).
-06. Each filesystem (e.g., sockfs) defines its own Table of Laws.
-07. ∴ `sb->s_op->alloc_inode` = "Tell this filesystem (sb) to birth an object".
-
 (KEY INSIGHT stripped for brevity) Offset 0 of super_operations is the function pointer to alloc_inode.
 
 REAL-WORLD EXAMPLES ON THIS MACHINE:
@@ -157,29 +148,11 @@ Supported filesystem types (From /proc/filesystems):
   
   blockdev: ext3, ext2, ext4 (these need actual block devices)
 
-KEY PRINCIPLE - AXIOM 0 MANIFESTATION:
-
-If I have 5 disks (3 ext4, 2 btrfs):
-  /dev/sda1 (ext4) → super_block instance #1, s_op → ext4_super_operations
-  /dev/sdb1 (ext4) → super_block instance #2, s_op → ext4_super_operations
-  /dev/sdc1 (ext4) → super_block instance #3, s_op → ext4_super_operations
-  /dev/sdd1 (btrfs) → super_block instance #4, s_op → btrfs_super_operations
-  /dev/sde1 (btrfs) → super_block instance #5, s_op → btrfs_super_operations
-
-Each super_block is a separate object in kernel memory (in kmalloc pool), but:
-  - The 3 ext4 instances ALL point to the SAME ext4_super_operations table
-  - The 2 btrfs instances ALL point to the SAME btrfs_super_operations table
-
-THIS IS HOW THE KERNEL SCALES FILESYSTEMS:
-  - One definition of how ext4 works (ext4_super_operations)
-  - Multiple instances (one per mounted ext4 partition)
-  - Each instance tracks its own state (blocksize, magic number, inode count, etc.)
-
 Implementation Example:
 static struct inode *alloc_inode(struct super_block *sb) {
     const struct super_operations *ops = sb->s_op; // 1. Read the Law Book pointer.
     if (ops->alloc_inode)                         // 2. See if the Law defines Birth.
-        return ops->alloc_inode(sb);              // 3. ∴ Call the specific birth function (sock_alloc_inode).
+        return ops->alloc_inode(sb);              // 3. → Call the specific birth function (sock_alloc_inode).
     return alloc_inode_sb(sb, ...);              // 4. Default birth (generic).
 }
 
