@@ -15,82 +15,56 @@
             --font-mono: 'SF Mono', 'Consolas', monospace;
         }
 
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            background: #f5f5f5;
+            background: #fff;
             color: var(--text-color);
-            font-family: var(--font-main);
+            font-family: var(--font-mono);
             margin: 0;
             padding: 0;
-            display: flex;
-            justify-content: center;
+            overflow: hidden;
         }
 
         .master-container {
             display: flex;
             width: 100vw;
-            max-width: 1800px;
             height: 100vh;
-            background: #fff;
-            box-shadow: 0 0 50px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
 
         .academic-pane {
             flex: 1;
-            padding: 50px 80px;
-            border-right: 2px solid #000;
-            overflow-y: auto;
-            line-height: 1.7;
-            font-size: 15px;
+            padding: 40px;
+            border-right: 1px solid #000;
+            overflow: auto;
         }
 
         .forensic-pane {
             flex: 1;
-            padding: 50px 60px;
-            background: #fafafa;
-            overflow-y: auto;
+            padding: 40px;
+            overflow: auto;
         }
 
         pre {
+            white-space: pre-wrap;
             font-family: var(--font-mono);
-            font-size: 13px;
-            background: #f8f8f8;
-            border: 1px solid #e0e0e0;
-            border-left: 3px solid #000;
-            padding: 15px;
-            overflow-x: auto;
-            line-height: 1.5;
-            margin: 20px 0;
+            line-height: 1.4;
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
         }
 
-        .forensic-pane pre {
-            background: #0d1117;
-            color: #c9d1d9;
-            border-left: 3px solid #c00;
-            border-radius: 4px;
+        .addr {
+            color: #000;
+            font-weight: 600;
         }
 
-        .label {
-            font-family: var(--font-header);
-            font-size: 11px;
-            font-weight: bold;
-            color: #777;
-            text-transform: uppercase;
-            margin-top: 40px;
-            display: block;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
-        }
-
-        .observation {
-            background: #000;
-            color: #0f0;
-            border: 1px solid #0f0;
-            padding: 15px;
-            margin: 20px 0;
-            font-family: 'SF Mono', monospace;
-            font-size: 12px;
-            line-height: 1.6;
+        .forensic-pane .addr {
+            color: #1f6feb;
         }
     </style>
 </head>
@@ -101,7 +75,8 @@
 
         <!-- LEFT SIDE: ANALYTICAL RESEARCH PAPER (THEORY) -->
         <div class="academic-pane">
-            <pre style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
+            <pre
+                style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
 ================================================================================
 FORENSIC AUDIT: THE VFS-SOCKET EMBEDDING
 ================================================================================
@@ -113,6 +88,25 @@ Date:    2026-01-23
 ================================================================================
 PREAMBLE: FOUNDATIONAL CONCEPTS (Teaching from First Principles)
 ================================================================================
+
+================================================================================
+AXIOM 0: THE IDENTITY OF THE SUPER_BLOCK
+================================================================================
+01. Memory = cells.
+02. A filesystem = a specific set of logic (Law) applied to these cells.
+03. The `super_block` = the Root Identity Card for a filesystem instance.
+04. Property: Offset 48 of `super_block` is `s_op`.
+05. `s_op` = Pointer to a Table of Laws (`struct super_operations`).
+06. Each filesystem (e.g., sockfs) defines its own Table of Laws.
+07. ∴ `sb->s_op->alloc_inode` = "Tell this filesystem (sb) to birth an object".
+
+Implementation Example:
+static struct inode *alloc_inode(struct super_block *sb) {
+    const struct super_operations *ops = sb->s_op; // 1. Read the Law Book pointer.
+    if (ops->alloc_inode)                         // 2. See if the Law defines Birth.
+        return ops->alloc_inode(sb);              // 3. ∴ Call the specific birth function (sock_alloc_inode).
+    return alloc_inode_sb(sb, ...);              // 4. Default birth (generic).
+}
 
 AXIOM 1: EMBEDDED STRUCTURES AND THE CONTAINER_OF PATTERN
 --------------------------------------------------------------------------------
@@ -411,16 +405,16 @@ BREAKDOWN OF EACH PART:
 
 STEP-BY-STEP EXECUTION:
 
-  Before: RAX = 0x1234567890ABC000 (some address, specifically &ei->vfs_inode)
+  Before: RAX = <span class="addr">0x1234567890ABC000</span> (some address, specifically &ei->vfs_inode)
   
   Instruction: lea -0x80(%rax), %r12
   
-  Step 1: Take value in RAX: 0x1234567890ABC000
-  Step 2: Subtract 0x80 (128):  0x1234567890ABC000 - 0x80
-  Step 3: Compute result:       0x1234567890ABB80
-  Step 4: Store in R12:         R12 = 0x1234567890ABF80
+  Step 1: Take value in RAX: <span class="addr">0x1234567890ABC000</span>
+  Step 2: Subtract 0x80 (128):  <span class="addr">0x1234567890ABC000</span> - 0x80
+  Step 3: Compute result:       <span class="addr">0x1234567890ABB80</span>
+  Step 4: Store in R12:         R12 = <span class="addr">0x1234567890ABF80</span>
   
-  After: R12 = 0x1234567890ABF80 (which is &ei->socket, offset 0)
+  After: R12 = <span class="addr">0x1234567890ABF80</span> (which is &ei->socket, offset 0)
 
 WHY lea (NOT mov or add):
 
@@ -513,7 +507,7 @@ A function pointer variable HOLDS AN ADDRESS:
   };
 
 After this assignment:
-  sockfs_ops.alloc_inode = 0xffffffff821cc400  (example address of sock_alloc_inode function)
+  sockfs_ops.alloc_inode = <span class="addr">0xffffffff821cc400</span>  (example address of sock_alloc_inode function)
 
 AXIOM 2C: HOW DO WE CALL A FUNCTION THROUGH A POINTER?
 
@@ -1421,14 +1415,14 @@ TRACE FORMAT: #Step | Address | Instruction | Registers Before | Work | Register
 #2  | +5   | push %rbp                          | RSP=stack                   | Save frame pointer  | RSP-=8
 #3  | +6   | mov 0x18aa3a3(%rip),%rax           | RAX=?                       | LOAD sock_mnt       | RAX=0xffff...(sock_mnt value)
      |      |                                    |                             | RIP-relative load   |
-     |      | # 0xffffffff83a767a0 <sock_mnt>    |                             | O(1) anchor access  |
+     |      | # <span class="addr">0xffffffff83a767a0</span> <sock_mnt>    |                             | O(1) anchor access  |
 #4  | +13  | mov %rsp,%rbp                      | RBP=old                     | Setup frame         | RBP=RSP
 #5  | +16  | push %r12                          | R12=?                       | Save callee-saved   | RSP-=8
 #6  | +18  | push %rbx                          | RBX=?                       | Save callee-saved   | RSP-=8
 #7  | +19  | mov 0x8(%rax),%rdi                 | RAX=sock_mnt                | Load mnt_sb         | RDI=sock_mnt->mnt_sb
      |      |                                    | RDI=? (USER ARG ERASED!)    | offset 8 in vfsmount| RDI=super_block*
 #8  | +23  | call new_inode_pseudo              | RDI=super_block*            | Allocate inode      | RAX=&socket_alloc->vfs_inode
-     |      | # 0xffffffff817f2bf0               |                             | Calls alloc_inode   | or NULL on failure
+     |      | # <span class="addr">0xffffffff817f2bf0</span>               |                             | Calls alloc_inode   | or NULL on failure
 #9  | +28  | test %rax,%rax                     | RAX=inode* or NULL          | Check NULL          | ZF set if NULL
 #10 | +31  | je sock_alloc+117                  | ZF=?                        | Jump if NULL        | -
 #11 | +33  | mov %rax,%rbx                      | RAX=inode*                  | Save inode ptr      | RBX=inode*
@@ -1583,7 +1577,8 @@ VERIFICATION COMMANDS:
 
         <!-- RIGHT SIDE: FORENSIC MACHINE PROOFS (COMMANDS) -->
         <div class="forensic-pane">
-            <pre style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
+            <pre
+                style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
 ================================================================================
 STAGE 0: KERNEL VERSION AND ENVIRONMENT VERIFICATION
 ================================================================================
@@ -1706,9 +1701,9 @@ SYMBOL MEANINGS:
   b = bss section (zero-initialized at boot)
 
 LOCATIONS IN KERNEL IMAGE:
-  sock_fs_type @ 0xffffffff839c2dc0 (in .data section)
-  sockfs_ops   @ 0xffffffff8276e740 (in .data section)
-  sock_mnt     @ 0xffffffff83a767a0 (in .bss section, initially NULL)
+  sock_fs_type @ <span class="addr">0xffffffff839c2dc0</span> (in .data section)
+  sockfs_ops   @ <span class="addr">0xffffffff8276e740</span> (in .data section)
+  sock_mnt     @ <span class="addr">0xffffffff83a767a0</span> (in .bss section, initially NULL)
 
 ================================================================================
 STAGE 5: FUNCTION POINTER VERIFICATION (gdb - Live Binary Inspection)
@@ -1717,11 +1712,11 @@ STAGE 5: FUNCTION POINTER VERIFICATION (gdb - Live Binary Inspection)
 $ gdb -batch -ex "file /boot/vmlinuz-6.14.0-37-generic" \
   -ex "x/2gx 0xffffffff8276e740" /boot/vmlinuz-6.14.0-37-generic
 
-0xffffffff8276e740:     0xffffffff821cc3f0      0xffffffff821cc4b0
+<span class="addr">0xffffffff8276e740</span>:     <span class="addr">0xffffffff821cc3f0</span>      <span class="addr">0xffffffff821cc4b0</span>
 
 DECODE:
-  At offset 0: 0xffffffff821cc3f0 = address of sock_alloc_inode (alloc_inode field)
-  At offset 8: 0xffffffff821cc4b0 = address of sock_free_inode (free_inode field)
+  At offset 0: <span class="addr">0xffffffff821cc3f0</span> = address of sock_alloc_inode (alloc_inode field)
+  At offset 8: <span class="addr">0xffffffff821cc4b0</span> = address of sock_free_inode (free_inode field)
 
 $ nm /boot/vmlinux-6.14.0-37-generic | grep -E "sock_alloc_inode|sock_free_inode"
 ffffffff821cc3f0 t sock_alloc_inode
@@ -1754,27 +1749,27 @@ STAGE 7: DISASSEMBLY - sock_alloc() CENTAUR ARITHMETIC
 $ gdb -batch -ex "disassemble sock_alloc" /boot/vmlinuz-6.14.0-37-generic
 
 Dump of assembler code for function sock_alloc:
-   0xffffffff821cc3f0 <+0>:     call   0xffffffff8133c290 <__fentry__>
-   0xffffffff821cc3f5 <+5>:     push   %rbp
-   0xffffffff821cc3f6 <+6>:     mov    0x18aa3a3(%rip),%rax        # Load sock_mnt
-   0xffffffff821cc3fd <+13>:    mov    %rsp,%rbp
-   0xffffffff821cc400 <+16>:    push   %r12
-   0xffffffff821cc402 <+18>:    push   %rbx
-   0xffffffff821cc403 <+19>:    mov    0x8(%rax),%rdi              # Load mnt_sb
-   0xffffffff821cc407 <+23>:    call   0xffffffff817f2bf0 <new_inode_pseudo>
-   0xffffffff821cc40c <+28>:    test   %rax,%rax
-   0xffffffff821cc40f <+31>:    je     0xffffffff821cc465 <sock_alloc+117>
-   0xffffffff821cc411 <+33>:    mov    %rax,%rbx
-   0xffffffff821cc414 <+36>:    lea    -0x80(%rax),%r12           # CENTAUR: R12 = RAX - 128
-   0xffffffff821cc418 <+40>:    call   0xffffffff817edb80 <get_next_ino>
+   <span class="addr">0xffffffff821cc3f0</span> <+0>:     call   <span class="addr">0xffffffff8133c290</span> <__fentry__>
+   <span class="addr">0xffffffff821cc3f5</span> <+5>:     push   %rbp
+   <span class="addr">0xffffffff821cc3f6</span> <+6>:     mov    0x18aa3a3(%rip),%rax        # Load sock_mnt
+   <span class="addr">0xffffffff821cc3fd</span> <+13>:    mov    %rsp,%rbp
+   <span class="addr">0xffffffff821cc400</span> <+16>:    push   %r12
+   <span class="addr">0xffffffff821cc402</span> <+18>:    push   %rbx
+   <span class="addr">0xffffffff821cc403</span> <+19>:    mov    0x8(%rax),%rdi              # Load mnt_sb
+   <span class="addr">0xffffffff821cc407</span> <+23>:    call   <span class="addr">0xffffffff817f2bf0</span> <new_inode_pseudo>
+   <span class="addr">0xffffffff821cc40c</span> <+28>:    test   %rax,%rax
+   <span class="addr">0xffffffff821cc40f</span> <+31>:    je     <span class="addr">0xffffffff821cc465</span> <sock_alloc+117>
+   <span class="addr">0xffffffff821cc411</span> <+33>:    mov    %rax,%rbx
+   <span class="addr">0xffffffff821cc414</span> <+36>:    lea    -0x80(%rax),%r12           # CENTAUR: R12 = RAX - 128
+   <span class="addr">0xffffffff821cc418</span> <+40>:    call   <span class="addr">0xffffffff817edb80</span> <get_next_ino>
    ...
-   0xffffffff821cc455 <+101>:   mov    %r12,%rax                   # Return socket pointer
-   0xffffffff821cc458 <+104>:   pop    %rbx
-   0xffffffff821cc459 <+105>:   pop    %r12
-   0xffffffff821cc45b <+107>:   pop    %rbp
-   0xffffffff821cc45c <+108>:   xor    %edx,%edx
-   0xffffffff821cc45e <+110>:   xor    %edi,%edi
-   0xffffffff821cc460 <+112>:   jmp    0xffffffff824f4af0 <__x86_return_thunk>
+   <span class="addr">0xffffffff821cc455</span> <+101>:   mov    %r12,%rax                   # Return socket pointer
+   <span class="addr">0xffffffff821cc458</span> <+104>:   pop    %rbx
+   <span class="addr">0xffffffff821cc459</span> <+105>:   pop    %r12
+   <span class="addr">0xffffffff821cc45b</span> <+107>:   pop    %rbp
+   <span class="addr">0xffffffff821cc45c</span> <+108>:   xor    %edx,%edx
+   <span class="addr">0xffffffff821cc45e</span> <+110>:   xor    %edi,%edi
+   <span class="addr">0xffffffff821cc460</span> <+112>:   jmp    <span class="addr">0xffffffff824f4af0</span> <__x86_return_thunk>
 
 KEY INSTRUCTION:
    0xffffffff821cc414 <+36>:    lea    -0x80(%rax),%r12
