@@ -172,21 +172,6 @@ INSTANTIATION: sock_fs_type (net/socket.c:425)
 
 
 ======================================================================
-THE FUNCTION: sockfs_init_fs_context (net/socket.c:411)
-======================================================================
-
-  411: static int sockfs_init_fs_context(struct fs_context *fc)
-  412: {
-  413:     struct pseudo_fs_context *ctx = init_pseudo(fc, SOCKFS_MAGIC);
-  414:     if (!ctx)
-  415:         return -ENOMEM;
-  416:     ctx->ops = &sockfs_ops;               /* <-- CRITICAL LINE */
-  417:     ctx->dops = &sockfs_dentry_operations;
-  418:     ctx->xattr = sockfs_xattr_handlers;
-  419:     return 0;
-  420: }
-
-======================================================================
 THE OPERATIONS TABLE: super_operations (net/socket.c)
 ======================================================================
 
@@ -204,6 +189,21 @@ THE OPERATIONS TABLE: super_operations (net/socket.c)
       .drop_inode    = generic_drop_inode,  /* FP assignment */
       .statfs        = sockfs_statfs,       /* FP assignment */
   };
+
+======================================================================
+THE FUNCTION: sockfs_init_fs_context (net/socket.c:411)
+======================================================================
+
+  411: static int sockfs_init_fs_context(struct fs_context *fc)
+  412: {
+  413:     struct pseudo_fs_context *ctx = init_pseudo(fc, SOCKFS_MAGIC);
+  414:     if (!ctx)
+  415:         return -ENOMEM;
+  416:     ctx->ops = &sockfs_ops;               /* <-- CRITICAL LINE */
+  417:     ctx->dops = &sockfs_dentry_operations;
+  418:     ctx->xattr = sockfs_xattr_handlers;
+  419:     return 0;
+  420: }
 
 LOCATION IN BINARY: nm vmlinux | grep sockfs_ops
   ffffffff8276e740 r sockfs_ops     /* r = read-only data section */
