@@ -173,6 +173,35 @@ static int __init sock_init(void)
 }
 
 ======================================================================
+COMPILATION & LINKING (PRE-BOOT)
+======================================================================
+
+1. The Compiler (gcc):
+   - Reads net/socket.c
+   - Creates sock_fs_type struct definition.
+   - Encodes ".init_fs_context" as a relocation placeholder (0x00000000).
+   - Output: socket.o (Relocatable Object File)
+
+2. The Linker (ld):
+   - Reads socket.o and fs/inode.o and kernel/fork.o...
+   - Decides final memory address for "sockfs_init_fs_context": 0xffffffff821cccb0.
+   - Patches the binary at "sock_fs_type" + 16 (offset of init_fs_context).
+   - Writes the absolute address 0xffffffff821cccb0 into that slot.
+   - Output: vmlinux (Static Executable)
+
+3. Verification (Pre-Boot):
+   - Before the machine turns on, the 'vmlinux' file on disk ALREADY contains this connection.
+   - gdb x/gx 0xffffffff839c2dc0+16 -> reads 0xffffffff821cccb0.
+   
+   [socket.o]                     [vmlinux (Disk)]
+   +-------------------+          +------------------------------+
+   | init: [Reloc]     | --Link-> | init: ffffffff821cccb0       |
+   +-------------------+          +------------------------------+
+                                            ^
+                                            |
+                                  The physics of the binary.
+
+======================================================================
 BOOT INITIALIZATION SEQUENCE
 ======================================================================
 
