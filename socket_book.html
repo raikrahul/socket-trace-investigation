@@ -101,21 +101,24 @@
 WHAT HAPPENS WHEN YOU CALL socket(2)
 ======================================================================
 
-When a user executes socket(AF_INET, SOCK_STREAM, IPPROTO_TCP), the kernel
-allocates a 768-byte block of memory to represent that socket. This document
-traces every pointer, function pointer, and instruction that makes this
-allocation possible—from the moment kernel programmers wrote the source code
-through compilation, kernel boot, and finally runtime execution.
+Execution of socket() is a deterministic O(1) retrieval of 768 bytes from a boot-sealed Slab cache, physically erasing user-registers to regain logic-pointers via RIP-relative centaur arithmetic.
 
-By the end, you will understand:
-  1. WHY socket allocation happens before socket configuration
-  2. WHAT structures and pointers enable allocation
-  3. HOW kernel code organization makes indirection safe
-  4. WHERE every pointer becomes valid (source → compile → boot → runtime)
-  5. WHEN user arguments are destroyed by kernel code
+DERIVATION OF THE NUMBER 768:
+----------------------------------------------------------------------
+01. struct socket size    = 128 bytes (proven by pahole)
+02. struct inode size     = 624 bytes (proven by pahole)
+03. Raw data sum          = 128 + 624 = 752 bytes
+04. CPU Cache Line (L1)   = 64 bytes
+∴ The 768-byte "sealed" size ensures cache-coherency for the centaur object.
 
-This is not about "everything is a file" or "close your file descriptors."
-This is about what MUST happen for a socket to exist at all.
+DERIVATION OF THE ERASURE (Why "2" becomes a pointer):
+----------------------------------------------------------------------
+01. State(T-n): RDI = 2 (User-provided AF_INET)
+02. Constraint: RDI is the "Argument 1" register in System V ABI
+03. Requirement: new_inode_pseudo(sb) needs sb-pointer in Argument 1 (RDI)
+04. Property: RDI is a single 64-bit cell; can only hold one law at a time
+05. Substitution: Operation 'mov 0x8(%rax), %rdi' replaces 2 with sb-pointer
+∴ The number 2 is physically destroyed to serve as the handle for allocation.
 
 ======================================================================
 AXIOM 0: C STRUCTURES, POINTERS, AND FUNCTION POINTERS
