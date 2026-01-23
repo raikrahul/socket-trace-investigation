@@ -1112,24 +1112,127 @@ KEY INSIGHT: The socket allocation requires ZERO knowledge of socket type.
   Socket type details are stored AFTER allocation, in socket->ops.
 
 ================================================================================
-COMPLETE CHAIN: SOURCE → COMPILE → BOOT → RUNTIME
+COMPLETE CHAIN: SOURCE → COMPILE → BOOT → RUNTIME (WITH PROVENANCE)
 ================================================================================
+
+POINTER LINEAGE THROUGH ALL 4 PHASES:
+
+SOURCE PHASE (Who creates):
+  Line 416 (net/socket.c):  ctx->ops = &sockfs_ops
+    Creator: Kernel programmer
+    Target: sockfs_ops symbol
+    Validity: NOT YET - only source code
+    Validator needed: Compiler and Linker
+  
+  Line 427 (net/socket.c):  sock_fs_type.init_fs_context = sockfs_init_fs_context
+    Creator: Kernel programmer
+    Target: sockfs_init_fs_context function
+    Validity: NOT YET - only source code
+    Validator needed: Compiler and Linker
+
+COMPILE PHASE (Who validates):
+  gcc processes socket.c
+    Creates object file socket.o with:
+    - Relocation entry for sockfs_init_fs_context (in .rel.data)
+    - Symbol table entry for sockfs_ops
+    - Symbol table entry for sockfs_init_fs_context
+    - Machine code for sock_alloc with RIP-relative addressing
+  
+  Linker (ld) processes all .o files:
+    - Resolves sockfs_init_fs_context → 0xffffffff817f2bf0
+    - Resolves sockfs_ops → 0xffffffff8276e500
+    - Writes addresses into vmlinux at relocation locations
+    - Adjusts RIP-relative offsets for final kernel addresses
+    Validity: NOW VALID - addresses computed and written to vmlinux
+
+BOOT PHASE (Who wires everything):
+  sock_init() executes (core_initcall level):
+  
+  STEP 1 - init_inodecache():
+    Action: sock_inode_cachep = kmem_cache_create(...)
+    Creator: kmem_cache_create function
+    Pointer: sock_inode_cachep = address of kmem_cache struct
+    Validity: YES - slab structure allocated
+    Who validates: kmem_cache_create ensures validity
+  
+  STEP 3 - kern_mount(&sock_fs_type):
+    Action: sock_mnt = kern_mount(&sock_fs_type)
+    Creator: kern_mount function
+    Pointer: sock_mnt = vfsmount* (allocated during mount)
+    Sub-action: alloc_super() allocates super_block
+    Sub-action: sb->s_op = &sockfs_ops (wired at offset 48)
+    Validity: YES - all structures allocated and linked
+    Who validates: kern_mount ensures validity
+
+RUNTIME PHASE (Who uses everything):
+  User calls: socket(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6)
+  
+  sock_alloc() execution:
+    Instruction +12: mov 0x18aa3a3(%rip), %rax
+      Loads: sock_mnt pointer (value stored at boot in STEP 3)
+      Validator: Linker computed offset at compile time
+      Status: VALID - sock_mnt initialized at boot
+    
+    Instruction +19: mov 0x8(%rax), %rdi
+      Loads: super_block pointer from vfsmount.mnt_sb
+      Validator: Linker computed offset, mount code set value
+      Status: VALID - super_block allocated at boot
+    
+    Instruction +23: call new_inode_pseudo
+      Argument: RDI = super_block pointer
+      Inside alloc_inode:
+        Load: sb->s_op (at offset 48)
+        Validator: Linker (set at compile time), mount code (wired at boot)
+        Status: VALID - points to sockfs_ops
+        Call: sb->s_op[0] = sock_alloc_inode (from sockfs_ops table)
+        Validator: Linker, mount code, compiler
+        Status: VALID - function exists at compile time
+      Inside sock_alloc_inode:
+        Call: kmem_cache_alloc(sock_inode_cachep)
+        Validator: Boot code set sock_inode_cachep, slab validates
+        Status: VALID - slab returns 768-byte block
+    
+    Instruction +36: lea -0x80(%rax), %r12
+      Calculation: R12 = RAX - 128 (inode pointer - 128 = socket pointer)
+      Offset -128: Compiled into instruction by gcc from socket_alloc struct
+      Validator: Compiler verified struct layout
+      Status: VALID - within allocated 768-byte block
 
 T_SOURCE:  Programmer writes C code with structures, function pointers
 T_COMPILE: gcc converts to machine code, creates symbol table and relocations
+           Linker resolves all symbols and validates addresses
 T_BOOT:    Kernel initializes: creates slab, registers FS, mounts sockfs, wires s_op
+           All pointers become valid, all function pointers point to real code
 T_RUNTIME: User calls socket(), kernel executes sock_alloc in 40 instructions
+           All pointers are used (loaded, dereferenced, followed to functions)
 
-ALL PHASES CONNECTED:
-  Source: sock_fs_type.init_fs_context = &sockfs_init_fs_context
-  Source: sockfs_init_fs_context sets ctx->ops = &sockfs_ops
-  Source: sockfs_ops.alloc_inode = &sock_alloc_inode
-  ──→ Compile: Function pointers stored as addresses in binary
-  ──→ Boot: kern_mount calls sockfs_init_fs_context
-  ──→ Boot: sb->s_op = ctx->ops = &sockfs_ops wired at offset 48
-  ──→ Runtime: new_inode_pseudo loads sb->s_op from memory
-  ──→ Runtime: alloc_inode calls *[s_op + 0] = sock_alloc_inode
-  ──→ Runtime: sock_alloc_inode allocates from pre-created slab cache
+COMPLETE PROVENANCE CHAIN:
+
+  sockfs_ops address (0xffffffff8276e500):
+    Source: sockfs_ops symbol in net/socket.c
+    Compiled: gcc outputs symbol in socket.o
+    Linked: ld resolves to 0xffffffff8276e500 in vmlinux
+    Stored: At boot, sb->s_op = &sockfs_ops wires this address into super_block
+    Used: Runtime, alloc_inode loads sb->s_op[0] = sock_alloc_inode from this address
+
+  sock_alloc_inode function address:
+    Source: sock_alloc_inode function in net/socket.c
+    Compiled: gcc outputs code and symbol in socket.o
+    Linked: ld resolves to 0xffffffff817f2a60 in vmlinux
+    Stored: In sockfs_ops table at offset 0 (set at link time)
+    Used: Runtime, call *[sockfs_ops + 0] jumps to this address
+
+  sock_inode_cachep pointer (slab cache):
+    Source: Global variable in net/socket.c
+    Created: boot time, init_inodecache() calls kmem_cache_create
+    Stored: Global variable sock_inode_cachep
+    Used: Runtime, sock_alloc_inode calls kmem_cache_alloc(sock_inode_cachep)
+
+  sock_mnt pointer (vfsmount):
+    Source: Global variable in net/socket.c
+    Created: boot time, kern_mount() allocates vfsmount
+    Stored: Global variable sock_mnt at 0xffffffff83a767a0
+    Used: Runtime, sock_alloc loads it with mov 0x18aa3a3(%rip), %rax
 
 THE SOCKET THAT EMERGES:
   768-byte block allocated at runtime
@@ -1137,6 +1240,13 @@ THE SOCKET THAT EMERGES:
   Contains inode structure (128+ bytes)
   Tracked in slab cache
   Returned to user with all fields initialized
+  
+  Every pointer used above has been validated:
+  - At source: Programmer writes C syntax
+  - At compile: Compiler verifies correctness, creates relocations
+  - At link: Linker resolves symbols and validates addresses
+  - At boot: Kernel initializes structures and wires function pointers
+  - At runtime: All pointers are valid and functional
 
 </pre>
 
