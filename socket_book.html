@@ -100,6 +100,155 @@ AXIOM 0: THE IDENTITY OF THE SUPER_BLOCK
 06. Each filesystem (e.g., sockfs) defines its own Table of Laws.
 07. ∴ `sb->s_op->alloc_inode` = "Tell this filesystem (sb) to birth an object".
 
+EXACT KERNEL DEFINITION OF struct super_block:
+(From /usr/src/linux-source-6.8.0/include/linux/fs.h:1199)
+
+struct super_block {
+        struct list_head        s_list;             /* Keep this first */
+        dev_t                   s_dev;              /* search index; _not_ kdev_t */
+        unsigned char           s_blocksize_bits;
+        unsigned long           s_blocksize;        /* Filesystem block size */
+        loff_t                  s_maxbytes;         /* Max file size */
+        struct file_system_type *s_type;            /* Type (ext4, btrfs, tmpfs, etc.) */
+        const struct super_operations   *s_op;      /* OFFSET 48: Operations table (THE LAW BOOK) */
+        const struct dquot_operations   *dq_op;     /* Quota operations */
+        const struct quotactl_ops       *s_qcop;
+        const struct export_operations *s_export_op;
+        unsigned long           s_flags;
+        unsigned long           s_iflags;           /* internal SB_I_* flags */
+        unsigned long           s_magic;            /* Filesystem magic number */
+        struct dentry           *s_root;            /* Root directory entry */
+        struct rw_semaphore     s_umount;           /* For mount/unmount locking */
+        int                     s_count;            /* Reference count */
+        atomic_t                s_active;           /* Active count */
+        void                    *s_security;        /* Security context */
+        const struct xattr_handler * const *s_xattr; /* Extended attributes */
+        struct hlist_bl_head    s_roots;            /* alternate root dentries for NFS */
+        struct list_head        s_mounts;           /* list of mounts */
+        struct block_device     *s_bdev;            /* Block device backing this FS */
+        struct bdev_handle      *s_bdev_handle;     /* Block device handle */
+        struct backing_dev_info *s_bdi;             /* Backing device info */
+        struct mtd_info         *s_mtd;             /* For MTD backing devices */
+        struct hlist_node       s_instances;        /* Instances of this filesystem */
+        unsigned int            s_quota_types;      /* Bitmask of supported quota types */
+        struct quota_info       s_dquot;            /* Diskquota specific options */
+        struct sb_writers       s_writers;          /* Writer tracking */
+        void                    *s_fs_info;         /* Filesystem-specific private info */
+        u32                     s_time_gran;        /* Time granularity (nanoseconds) */
+        time64_t                s_time_min;         /* Min time limit (seconds) */
+        time64_t                s_time_max;         /* Max time limit (seconds) */
+        __u32                   s_fsnotify_mask;    /* Filesystem notification mask */
+        struct fsnotify_mark_connector __rcu *s_fsnotify_marks; /* Notification marks */
+        char                    s_id[32];           /* Informational name (e.g., "nvme0n1p4") */
+        uuid_t                  s_uuid;             /* UUID of the filesystem */
+        unsigned int            s_max_links;        /* Max links per inode */
+        struct mutex            s_vfs_rename_mutex; /* VFS locking */
+        const char              *s_subtype;         /* Filesystem subtype */
+        const struct dentry_operations *s_d_op;     /* default d_op for dentries */
+        struct shrinker         *s_shrink;          /* per-sb shrinker handle */
+        atomic_long_t           s_remove_count;     /* inodes with nlink==0 but referenced */
+        atomic_long_t           s_fsnotify_connectors; /* watched objects count */
+        int                     s_readonly_remount; /* Read-only state change flag */
+        errseq_t                s_wb_err;           /* writeback error sequence */
+        struct workqueue_struct *s_dio_done_wq;     /* AIO completions wq */
+        struct hlist_head       s_pins;             /* pinned dentries */
+};
+
+MEMORY LAYOUT (Via Field Analysis):
+        Offset 0: s_list (16 bytes - list_head)
+        Offset 16: s_dev (4 bytes)
+        Offset 20: s_blocksize_bits (1 byte)
+        Offset 24: s_blocksize (8 bytes)
+        Offset 32: s_maxbytes (8 bytes)
+        Offset 40: s_type (8 bytes - pointer to file_system_type)
+        Offset 48: s_op (8 bytes - pointer to super_operations) <<< OFFSET 48
+        Offset 56: dq_op, dquot operations...
+        (Many more fields follow)
+        ≈ Offset 560: s_pins (variable, depends on CONFIG options)
+
+TOTAL SIZE: Approximately 560-768 bytes (varies with CONFIG options like CONFIG_SECURITY, CONFIG_FS_ENCRYPTION)
+
+struct super_operations (THE LAW BOOK):
+(From /usr/src/linux-source-6.8.0/include/linux/fs.h:2136)
+
+struct super_operations {
+        struct inode *(*alloc_inode)(struct super_block *sb);     /* Offset 0 */
+        void (*destroy_inode)(struct inode *);                    /* Offset 8 */
+        void (*free_inode)(struct inode *);                       /* Offset 16 */
+        void (*dirty_inode) (struct inode *, int flags);          /* Offset 24 */
+        int (*write_inode) (struct inode *, struct writeback_control *wbc);
+        int (*drop_inode) (struct inode *);
+        void (*evict_inode) (struct inode *);
+        void (*put_super) (struct super_block *);
+        int (*sync_fs)(struct super_block *sb, int wait, void *wbc);
+        int (*freeze_super) (struct super_block *);
+        int (*freeze_fs) (struct super_block *);
+        int (*thaw_super) (struct super_block *);
+        int (*unfreeze_fs) (struct super_block *);
+        int (*statfs) (struct dentry *, struct kstatfs *);
+        int (*remount_fs) (struct super_block *, int *, char *);
+        void (*umount_begin) (struct super_block *);
+        int (*show_options)(struct seq_file *, struct dentry *);
+        int (*show_devname)(struct seq_file *, struct dentry *);
+        int (*show_path)(struct seq_file *, struct dentry *);
+        int (*show_stats)(struct seq_file *, struct dentry *);
+        /* More fields... */
+};
+
+KEY INSIGHT: Offset 0 of super_operations is the function pointer to alloc_inode.
+
+REAL-WORLD EXAMPLES ON THIS MACHINE:
+(From: mount, /proc/filesystems, /sys/module/)
+
+Currently mounted filesystems and their super_block instances:
+  1. sysfs on /sys (type: sysfs)
+     → separate super_block instance
+     → sysfs_super_operations
+
+  2. proc on /proc (type: proc)
+     → separate super_block instance
+     → proc_super_operations
+
+  3. devtmpfs on /dev (type: devtmpfs)
+     → separate super_block instance
+     → devtmpfs_super_operations
+
+  4. tmpfs on /run (type: tmpfs)
+     → separate super_block instance
+     → tmpfs_super_operations
+
+  5. /dev/nvme0n1p4 on / (type: ext4) <<< ROOT FILESYSTEM
+     → separate super_block instance
+     → ext4_super_operations
+     → s_id = "nvme0n1p4"
+     → s_blocksize = 4096
+     → s_maxbytes = 9223372036854775807 (max 64-bit file size)
+
+Supported filesystem types (From /proc/filesystems):
+  nodev: sysfs, tmpfs, bdev, proc, cgroup, cgroup2, cpuset, devtmpfs, configfs,
+         debugfs, tracefs, securityfs, sockfs, bpf, pipefs, ramfs, hugetlbfs,
+         devpts
+  
+  blockdev: ext3, ext2, ext4 (these need actual block devices)
+
+KEY PRINCIPLE - AXIOM 0 MANIFESTATION:
+
+If I have 5 disks (3 ext4, 2 btrfs):
+  /dev/sda1 (ext4) → super_block instance #1, s_op → ext4_super_operations
+  /dev/sdb1 (ext4) → super_block instance #2, s_op → ext4_super_operations
+  /dev/sdc1 (ext4) → super_block instance #3, s_op → ext4_super_operations
+  /dev/sdd1 (btrfs) → super_block instance #4, s_op → btrfs_super_operations
+  /dev/sde1 (btrfs) → super_block instance #5, s_op → btrfs_super_operations
+
+Each super_block is a separate object in kernel memory (in kmalloc pool), but:
+  - The 3 ext4 instances ALL point to the SAME ext4_super_operations table
+  - The 2 btrfs instances ALL point to the SAME btrfs_super_operations table
+
+THIS IS HOW THE KERNEL SCALES FILESYSTEMS:
+  - One definition of how ext4 works (ext4_super_operations)
+  - Multiple instances (one per mounted ext4 partition)
+  - Each instance tracks its own state (blocksize, magic number, inode count, etc.)
+
 Implementation Example:
 static struct inode *alloc_inode(struct super_block *sb) {
     const struct super_operations *ops = sb->s_op; // 1. Read the Law Book pointer.
