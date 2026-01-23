@@ -1,0 +1,183 @@
+=== KERNEL VERSION AND COMPILE INFO ===
+Linux version 6.14.0-37-generic (buildd@lcy02-amd64-031) (x86_64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #37~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Nov 20 10:25:38 UTC 2
+
+=== SLAB INFO (Memory Pool Status) ===
+sock_inode_cache    2099   2340    832   39    8 : tunables    0    0    0 : slabdata     60     60      0
+
+=== STRUCT LAYOUT: socket_alloc (DWARF) ===
+struct socket_alloc {
+	struct socket              socket __attribute__((__aligned__(64))); /*     0   128 */
+	/* --- cacheline 2 boundary (128 bytes) --- */
+	struct inode               vfs_inode __attribute__((__aligned__(8))); /*   128   624 */
+
+	/* size: 768, cachelines: 12, members: 2 */
+	/* padding: 16 */
+	/* forced alignments: 2 */
+} __attribute__((__aligned__(64)));
+
+
+=== STRUCT LAYOUT: super_block (DWARF - Offsets) ===
+struct super_block {
+	struct list_head           s_list;               /*     0    16 */
+	dev_t                      s_dev;                /*    16     4 */
+	unsigned char              s_blocksize_bits;     /*    20     1 */
+
+	/* XXX 3 bytes hole, try to pack */
+
+	long unsigned int          s_blocksize;          /*    24     8 */
+	loff_t                     s_maxbytes;           /*    32     8 */
+	struct file_system_type *  s_type;               /*    40     8 */
+	const struct super_operations  * s_op;           /*    48     8 */
+	const struct dquot_operations  * dq_op;          /*    56     8 */
+	/* --- cacheline 1 boundary (64 bytes) --- */
+	const struct quotactl_ops  * s_qcop;             /*    64     8 */
+	const struct export_operations  * s_export_op;   /*    72     8 */
+	long unsigned int          s_flags;              /*    80     8 */
+	long unsigned int          s_iflags;             /*    88     8 */
+	long unsigned int          s_magic;              /*    96     8 */
+	struct dentry *            s_root;               /*   104     8 */
+	struct rw_semaphore        s_umount;             /*   112    40 */
+
+=== STRUCT LAYOUT: vfsmount (DWARF) ===
+struct vfsmount {
+	struct dentry *            mnt_root;             /*     0     8 */
+	struct super_block *       mnt_sb;               /*     8     8 */
+	int                        mnt_flags;            /*    16     4 */
+
+	/* XXX 4 bytes hole, try to pack */
+
+	struct mnt_idmap *         mnt_idmap;            /*    24     8 */
+
+	/* size: 32, cachelines: 1, members: 4 */
+	/* sum members: 28, holes: 1, sum holes: 4 */
+	/* last cacheline: 32 bytes */
+};
+
+
+=== DISASSEMBLY: sock_alloc (Pointer Arithmetic Proof) ===
+Dump of assembler code for function sock_alloc:
+   0xffffffff821cc3f0 <+0>:	call   0xffffffff8133c290 <__fentry__>
+   0xffffffff821cc3f5 <+5>:	push   %rbp
+   0xffffffff821cc3f6 <+6>:	mov    0x18aa3a3(%rip),%rax        # 0xffffffff83a767a0 <sock_mnt>
+   0xffffffff821cc3fd <+13>:	mov    %rsp,%rbp
+   0xffffffff821cc400 <+16>:	push   %r12
+   0xffffffff821cc402 <+18>:	push   %rbx
+   0xffffffff821cc403 <+19>:	mov    0x8(%rax),%rdi
+   0xffffffff821cc407 <+23>:	call   0xffffffff817f2bf0 <new_inode_pseudo>
+   0xffffffff821cc40c <+28>:	test   %rax,%rax
+   0xffffffff821cc40f <+31>:	je     0xffffffff821cc465 <sock_alloc+117>
+   0xffffffff821cc411 <+33>:	mov    %rax,%rbx
+   0xffffffff821cc414 <+36>:	lea    -0x80(%rax),%r12
+   0xffffffff821cc418 <+40>:	call   0xffffffff817edb80 <get_next_ino>
+   0xffffffff821cc41d <+45>:	mov    %eax,%eax
+   0xffffffff821cc41f <+47>:	mov    %rax,0x40(%rbx)
+   0xffffffff821cc423 <+51>:	mov    $0xffffc1ff,%eax
+   0xffffffff821cc428 <+56>:	mov    %ax,(%rbx)
+   0xffffffff821cc42b <+59>:	mov    %gs:0x7de69e0d(%rip),%rax        # 0x36240 <pcpu_hot>
+   0xffffffff821cc433 <+67>:	mov    0xce0(%rax),%rdx
+   0xffffffff821cc43a <+74>:	mov    0x20(%rdx),%edx
+   0xffffffff821cc43d <+77>:	mov    %edx,0x4(%rbx)
+   0xffffffff821cc440 <+80>:	mov    0xce0(%rax),%rax
+   0xffffffff821cc447 <+87>:	mov    0x24(%rax),%eax
+   0xffffffff821cc44a <+90>:	movq   $0xffffffff8276e500,0x20(%rbx)
+   0xffffffff821cc452 <+98>:	mov    %eax,0x8(%rbx)
+   0xffffffff821cc455 <+101>:	mov    %r12,%rax
+   0xffffffff821cc458 <+104>:	pop    %rbx
+   0xffffffff821cc459 <+105>:	pop    %r12
+   0xffffffff821cc45b <+107>:	pop    %rbp
+   0xffffffff821cc45c <+108>:	xor    %edx,%edx
+   0xffffffff821cc45e <+110>:	xor    %edi,%edi
+   0xffffffff821cc460 <+112>:	jmp    0xffffffff824f4af0 <__x86_return_thunk>
+   0xffffffff821cc465 <+117>:	xor    %r12d,%r12d
+   0xffffffff821cc468 <+120>:	pop    %rbx
+   0xffffffff821cc469 <+121>:	mov    %r12,%rax
+   0xffffffff821cc46c <+124>:	pop    %r12
+   0xffffffff821cc46e <+126>:	pop    %rbp
+   0xffffffff821cc46f <+127>:	xor    %edx,%edx
+   0xffffffff821cc471 <+129>:	xor    %edi,%edi
+   0xffffffff821cc473 <+131>:	jmp    0xffffffff824f4af0 <__x86_return_thunk>
+End of assembler dump.
+
+=== FUNCTION SIGNATURE: sock_alloc ===
+All functions matching regular expression "^sock_alloc$":
+
+File /build/linux-hwe-6.14-eIw5wo/linux-hwe-6.14-6.14.0/net/socket.c:
+617:	struct socket *sock_alloc(void);
+
+=== FILESYSTEM AND MOUNT PROOF: sockfs ===
+nodev	sockfs
+
+=== PROTOCOLS REGISTERED ===
+protocol  size sockets  memory press maxhdr  slab module     cl co di ac io in de sh ss gs se re bi br ha uh gp em
+RFCOMM     856      0      -1   NI       0   no   rfcomm      n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+QIPCRTR    800      0      -1   NI       0   yes  qrtr        n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+ALG        808      0      -1   NI       0   no   af_alg      n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+BNEP       824      0      -1   NI       0   no   bnep        n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+SCO        864      0      -1   NI       0   no   bluetooth   n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+L2CAP      848      0      -1   NI       0   no   bluetooth   n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+HCI        904      0      -1   NI       0   no   bluetooth   n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+PACKET    1536      5      -1   NI       0   no   kernel      n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+MPTCPv6   2136      0       0   no       0   yes  kernel      y  y  y  n  y  y  y  y  y  y  y  y  n  n  y  y  y  n
+PINGv6    1208      0      -1   NI       0   yes  kernel      y  y  y  n  n  y  n  n  y  y  y  y  y  y  y  y  y  n
+RAWv6     1208      1      -1   NI       0   yes  kernel      y  y  y  n  y  y  y  n  y  y  y  y  y  y  y  y  n  n
+UDPLITEv6 1344      0    1173   NI       0   yes  kernel      y  y  y  n  y  y  y  n  y  y  y  y  n  n  y  y  y  n
+UDPv6     1344      6    1173   NI       0   yes  kernel      y  y  y  n  y  y  y  n  y  y  y  y  n  n  y  y  y  n
+TCPv6     2560     10       0   no     320   yes  kernel      y  y  y  y  y  y  y  y  y  y  y  y  n  y  y  y  y  y
+XDP       1024      0      -1   NI       0   no   kernel      n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+UNIX-STREAM 1024   1029      -1   NI       0   yes  kernel      y  n  n  n  n  n  n  n  n  n  n  n  n  n  n  y  n  n
+UNIX      1024    139      -1   NI       0   yes  kernel      y  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+UDP-Lite  1152      0    1173   NI       0   yes  kernel      y  y  y  n  y  y  y  n  y  y  y  y  n  n  y  y  y  n
+MPTCP     1976      3       0   no       0   yes  kernel      y  y  y  n  y  y  y  y  y  y  y  y  n  n  y  y  y  n
+PING      1000      0      -1   NI       0   yes  kernel      y  y  y  n  n  y  n  n  y  y  y  y  y  y  y  y  y  n
+RAW       1008      0      -1   NI       0   yes  kernel      y  y  y  n  y  y  y  n  y  y  y  y  y  y  y  y  n  n
+UDP       1152      6    1173   NI       0   yes  kernel      y  y  y  n  y  y  y  n  y  y  y  y  n  n  y  y  y  n
+TCP       2368     31       0   no     320   yes  kernel      y  y  y  y  y  y  y  y  y  y  y  y  n  y  y  y  y  y
+MCTP       832      0      -1   NI       0   no   kernel      y  n  n  n  n  y  n  n  n  n  n  n  n  n  y  y  n  n
+NETLINK   1088     71      -1   NI       0   no   kernel      n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n  n
+
+=== INVESTIGATION COMMAND LOG (Chronological) ===
+
+1.  HARDWARE AUDIT:
+    $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size
+    $ sudo cat /boot/config-$(uname -r) | grep "CONFIG_X86_L1_CACHE_SHIFT"
+
+2.  BINARY SYMBOL FORENSICS:
+    $ nm vmlinux | grep -E "sockfs_ops|sock_alloc_inode"
+    $ sudo grep -E "sockfs_ops" /proc/kallsyms
+    $ sudo grep -E "sockfs_ops|sock_alloc_inode" /boot/System.map-$(uname -r)
+
+3.  STRUCT LAYOUT ANALYSIS (DWARF):
+    $ pahole -C socket_alloc vmlinux
+    $ pahole -C socket vmlinux
+    $ pahole -C inode vmlinux
+    $ pahole -C super_block vmlinux
+
+4.  MACHINE CODE VERIFICATION:
+    $ sudo gdb -batch -ex "disassemble sock_init" vmlinux
+    $ sudo gdb -batch -ex "disassemble sock_alloc" vmlinux
+
+5.  LIVE MEMORY POOL (SLAB):
+    $ sudo cat /proc/slabinfo | grep sock_inode
+    $ sudo cat /sys/kernel/slab/sock_inode_cache/object_size
+    $ sudo cat /sys/kernel/slab/sock_inode_cache/slab_size
+    $ sudo cat /sys/kernel/slab/sock_inode_cache/align
+
+6.  VFS TYPE INHERITANCE TRACKING:
+    $ grep -r "struct super_operations {" /usr/src/linux-source-6.8.0/include/linux/
+    $ head -n 100 /usr/src/linux-source-6.8.0/net/socket.c | grep "#include"
+    $ grep "VFS" /usr/src/linux-source-6.8.0/include/linux/fs.h | head -n 10
+
+7.  EXPERIMENTAL: MULTIPLE DISK INSTANTIATION:
+    $ fallocate -l 10M disk_1.img
+    $ mkfs.ext4 -F disk_1.img
+    $ sudo mount disk_1.img mount_1
+    $ mount | grep mount_  (Used to verify physically different SB addresses via Device IDs 7:14 and 7:15)
+
+8.  KERNEL TRACING (BPFtrace & GDB):
+    $ sudo bpftrace -B none -e 'kprobe:ext4_fill_super { printf("New SB Address: %p\n", arg1); exit(); }'
+    $ sudo bpftrace -B none -e 'kretprobe:alloc_super { printf("New SB Address: %p\n", retval); }'
+    $ sudo gdb -batch -c /proc/kcore vmlinux -ex "p super_blocks"
+
+9.  LEAK CLEANUP:
+    $ sudo umount mount_*
+    $ rm -rf mount_* disk_*.img audit_results.txt sb_*

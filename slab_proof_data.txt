@@ -1,0 +1,16 @@
+=== SOURCE: init_inodecache in net/socket.c ===
+339:static void init_inodecache(void)
+340-{
+341-	sock_inode_cachep = kmem_cache_create("sock_inode_cache",
+342-					      sizeof(struct socket_alloc),
+343-					      0,
+344-					      (SLAB_HWCACHE_ALIGN |
+345-					       SLAB_RECLAIM_ACCOUNT |
+346-					       SLAB_MEM_SPREAD | SLAB_ACCOUNT),
+347-					      init_once);
+348-	BUG_ON(sock_inode_cachep == NULL);
+349-}
+
+=== DISASSEMBLY: init_inodecache (Look for size argument) ===
+sudo: unable to restore terminal settings: Illegal seek
+sudo: a password is required

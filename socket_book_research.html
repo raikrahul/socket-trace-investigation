@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Socket Research - Left Pane</title>
+    <style>
+        :root {
+            --bg-color: #fff;
+            --text-color: #000;
+            --accent-color: #c00;
+            --border-color: #e0e0e0;
+            --font-main: 'Charter', 'Georgia', serif;
+            --font-header: 'Helvetica Neue', sans-serif;
+            --font-mono: 'SF Mono', 'Consolas', monospace;
+        }
+
+        body {
+            background: #fff;
+            color: var(--text-color);
+            font-family: var(--font-main);
+            margin: 0;
+            padding: 50px 80px;
+            line-height: 1.7;
+            font-size: 15px;
+        }
+
+        h1 {
+            font-family: var(--font-header);
+            font-size: 32px;
+            font-weight: 300;
+            border-bottom: 2px solid #000;
+            padding-bottom: 15px;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            font-family: var(--font-header);
+            font-size: 22px;
+            font-weight: 400;
+            margin-top: 50px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 8px;
+        }
+
+        h3 {
+            font-family: var(--font-header);
+            font-size: 17px;
+            font-weight: 500;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        pre {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-left: 3px solid #000;
+            padding: 15px;
+            overflow-x: auto;
+            line-height: 1.5;
+            margin: 20px 0;
+        }
+
+        code {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .addr {
+            color: #c00;
+            font-family: var(--font-mono);
+            font-weight: 600;
+        }
+
+        .highlight {
+            background: #fffacd;
+            padding: 15px;
+            border-left: 4px solid #ffd700;
+            margin: 20px 0;
+        }
+
+        table {
+            border-collapse: collapse;
+            margin: 20px 0;
+            width: 100%;
+            font-size: 14px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<pre style="white-space: pre-wrap; font-family: var(--font-mono); line-height: 1.4; border: none; background: transparent; padding: 0;">
+================================================================================
+FORENSIC AUDIT: THE VFS-SOCKET EMBEDDING
+================================================================================
+Target:  Physical derivation of sock_alloc() enablement
+Kernel:  Linux 6.14.0-37-generic (x86_64)
+Build:   gcc-13.3.0, GNU ld 2.42
+Date:    2026-01-23
+
+================================================================================
+PHASE 0: COMPILE-TIME DEFINITIONS (Source Code)
+================================================================================
+
+0.1 SOCK_FS_TYPE DEFINITION (When: Compile-Time, Where: net/socket.c:425)
+--------------------------------------------------------------------------------
+OBSERVATION: net/socket.c contains this variable:
+
+  $ grep -n "sock_fs_type" net/socket.c | head -1
+  425: static struct file_system_type sock_fs_type = {
+
+QUESTION: What is "struct file_system_type"?
+
+DEFINITION (struct file_system_type):
+--------------------------------------------------------------------------------
+  $ grep -n "struct file_system_type {" include/linux/fs.h
+  2459: struct file_system_type {
+
+  $ grep -A 12 "struct file_system_type {" include/linux/fs.h
+
+  struct file_system_type {
+      const char *name;                              /*  0    8 */
+      int fs_flags;                                  /*  8    4 */
+      int (*init_fs_context)(struct fs_context *);  /* 16    8 */ // function pointer
+      const struct fs_parameter_spec *parameters;   /* 24    8 */
+      struct dentry *(*mount)(...);                 /* 32    8 */ // function pointer
+      void (*kill_sb)(struct super_block *);        /* 40    8 */ // function pointer
+      struct module *owner;                         /* 48    8 */
+      struct file_system_type *next;                /* 56    8 */
+      struct hlist_head fs_supers;                  /* 64   16 */
+      ...
+  };
+
+  Location: include/linux/fs.h:2459
+  Purpose:  Describes how to create/destroy a filesystem instance.
+  
+  Key fields:
+    .name             = string identifying this filesystem
+    .init_fs_context  = function to initialize mount context (NEW API)
+    .mount            = function to mount filesystem (OLD API, may be NULL)
+    .kill_sb          = function to destroy superblock
+
+SOCK_FS_TYPE INSTANTIATION:
+--------------------------------------------------------------------------------
+  $ grep -A 5 "static struct file_system_type sock_fs_type" net/socket.c
+
+  425: static struct file_system_type sock_fs_type = {
+  426:     .name             = "sockfs",
+  427:     .init_fs_context  = sockfs_init_fs_context,
+  428:     .kill_sb          = kill_anon_super,
+  429: };
+
+  Field assignments:
+    sock_fs_type.name            = "sockfs"                    (string literal)
+    sock_fs_type.init_fs_context = &sockfs_init_fs_context     (function address)
+    sock_fs_type.kill_sb         = &kill_anon_super            (function address)
+
+  $ nm vmlinux | grep sock_fs_type
+  ffffffff839c2dc0 d sock_fs_type
+
+QUESTION: What is sockfs_init_fs_context?
+
+DEFINITION (sockfs_init_fs_context):
+--------------------------------------------------------------------------------
+  $ grep -n "sockfs_init_fs_context" net/socket.c
+  411: static int sockfs_init_fs_context(struct fs_context *fc)
+  427:     .init_fs_context  = sockfs_init_fs_context,
+
+  $ grep -A 10 "static int sockfs_init_fs_context" net/socket.c
+
+  411: static int sockfs_init_fs_context(struct fs_context *fc)
+  412: {
+  413:     struct pseudo_fs_context *ctx = init_pseudo(fc, SOCKFS_MAGIC);
+  414:     if (!ctx)
+  415:         return -ENOMEM;
+  416:     ctx->ops = &sockfs_ops;
+  417:     ctx->dops = &sockfs_dentry_operations;
+  418:     ctx->xattr = sockfs_xattr_handlers;
+  419:     return 0;
+  420: }
+
+  Location: net/socket.c:411
+  Signature: int sockfs_init_fs_context(struct fs_context *fc)
+  Returns: 0 on success, -ENOMEM on failure
+
+  WHY THIS FUNCTION EXISTS:
+  -------------------------
+  sock_fs_type.init_fs_context is a function pointer (offset 16 in file_system_type).
+  When the kernel mounts sockfs, it calls this function pointer.
+  
+  The function must:
+    1. Receive fs_context* (the mount operation's state container)
+    2. Configure how this specific filesystem creates its superblock
+    3. Return 0 on success
+  
+  Line 416: ctx->ops = &sockfs_ops
+    WHY: This stores the address of sockfs_ops in ctx->ops.
+    Later, when the superblock is created, this address will be copied
+    to super_block.s_op (offset 48). This is how the kernel learns
+    which function to call when allocating inodes for sockfs.
+
+================================================================================
+PHASE I: BOOT-TIME EXECUTION TRACE
+================================================================================
+
+1.1 WHAT HAS ALREADY HAPPENED BEFORE sock_init()
+--------------------------------------------------------------------------------
+The kernel uses initcall levels. sock_init is registered as core_initcall.
+
+  $ grep -n "core_initcall\|fs_initcall" net/socket.c
+  3295: core_initcall(sock_init);
+
+INITCALL ORDER (before sock_init runs):
+  Level 0: early_initcall    - CPU, memory setup
+  Level 1: pure_initcall     - Early console
+  Level 2: core_initcall     - sock_init IS HERE
+  Level 3: postcore_initcall
+  Level 4: arch_initcall
+  Level 5: subsys_initcall
+  Level 6: fs_initcall       - Real filesystems (ext4, etc.)
+  Level 7: device_initcall
+
+ALREADY COMPLETED when sock_init() starts:
+  - Memory allocator (kmalloc works)
+  - Slab subsystem (kmem_cache_create works)
+  - VFS core (register_filesystem works)
+  - Basic CPU initialization
+
+1.2 SOCK_INIT() FULL TRACE
+--------------------------------------------------------------------------------
+CALLER: Kernel init system via do_initcalls() -> do_one_initcall(sock_init)
+SOURCE: net/socket.c:3263
+
+  $ grep -A 30 "static int __init sock_init" net/socket.c
+
+  3263: static int __init sock_init(void)
+  3264: {
+  3265:     int err;
+  3266:
+  3267:     err = net_sysctl_init();           // Step 1: sysctl setup
+  3268:     if (err)
+  3269:         goto out;
+  3270:
+  3271:     skb_init();                        // Step 2: Socket buffer init
+  3272:
+  3273:     init_inodecache();                 // Step 3: CREATE SLAB CACHE
+  3274:
+  3275:     err = register_filesystem(&sock_fs_type);  // Step 4: REGISTER SOCKFS
+  3276:     if (err)
+  3277:         goto out;
+  3278:
+  3279:     sock_mnt = kern_mount(&sock_fs_type);      // Step 5: MOUNT & SEAL
+  3280:     if (IS_ERR(sock_mnt)) {
+  3281:         err = PTR_ERR(sock_mnt);
+  3282:         goto out_mount;
+  3283:     }
+  3284:     ...
+  3285: }
+
+================================================================================ 
+PHASE III: RUNTIME - sock_alloc() COMPLETE TRACE
+================================================================================
+
+SIGNATURE: struct socket *sock_alloc(void)   // TAKES NO ARGUMENTS
+SOURCE: net/socket.c:617
+
+WHAT HAS ALREADY HAPPENED (Boot completed):
+  - sock_mnt = valid vfsmount pointer (set by sock_init)
+  - sock_mnt->mnt_sb = valid super_block pointer
+  - sock_mnt->mnt_sb->s_op = &sockfs_ops
+  - sock_inode_cachep = valid slab cache pointer
+
+3.1 DISASSEMBLY WITH LINE-BY-LINE TRACE
+--------------------------------------------------------------------------------
+  $ gdb -batch -ex "disassemble sock_alloc" vmlinux
+
+TRACE FORMAT: #Step | Address | Instruction | Registers Before | Work | Registers After
+--------------------------------------------------------------------------------
+#1  | +0   | call __fentry__                    | -                           | Tracing hook        | -
+#2  | +5   | push %rbp                          | RSP=stack                   | Save frame pointer  | RSP-=8
+#3  | +6   | mov 0x18aa3a3(%rip),%rax           | RAX=?                       | LOAD sock_mnt       | RAX=0xffff...(sock_mnt value)
+     |      |                                    |                             | RIP-relative load   |
+     |      | # 0xffffffff83a767a0 <sock_mnt>    |                             | O(1) anchor access  |
+#4  | +13  | mov %rsp,%rbp                      | RBP=old                     | Setup frame         | RBP=RSP
+#5  | +16  | push %r12                          | R12=?                       | Save callee-saved   | RSP-=8
+#6  | +18  | push %rbx                          | RBX=?                       | Save callee-saved   | RSP-=8
+#7  | +19  | mov 0x8(%rax),%rdi                 | RAX=sock_mnt                | Load mnt_sb         | RDI=sock_mnt->mnt_sb
+     |      |                                    | RDI=? (USER ARG ERASED!)    | offset 8 in vfsmount| RDI=super_block*
+#8  | +23  | call new_inode_pseudo              | RDI=super_block*            | Allocate inode      | RAX=&socket_alloc->vfs_inode
+     |      | # 0xffffffff817f2bf0               |                             | Calls alloc_inode   | or NULL on failure
+#9  | +28  | test %rax,%rax                     | RAX=inode* or NULL          | Check NULL          | ZF set if NULL
+#10 | +31  | je sock_alloc+117                  | ZF=?                        | Jump if NULL        | -
+#11 | +33  | mov %rax,%rbx                      | RAX=inode*                  | Save inode ptr      | RBX=inode*
+#12 | +36  | lea -0x80(%rax),%r12               | RAX=inode* (offset 128)     | CENTAUR ARITHMETIC  | R12=socket* (offset 0)
+     |      |                                    |                             | inode - 128 = socket|
+#13 | +40  | call get_next_ino                  | -                           | Get unique ino      | EAX=ino number
+#14 | +45  | mov %eax,%eax                      | EAX=ino                     | Zero-extend         | RAX=ino (64-bit)
+#15 | +47  | mov %rax,0x40(%rbx)                | RBX=inode*, RAX=ino         | inode->i_ino = ino  | [RBX+64]=ino
+#16 | +51  | mov $0xffffc1ff,%eax               | -                           | Load mode constant  | EAX=S_IFSOCK|0777
+#17 | +56  | mov %ax,(%rbx)                     | RBX=inode*                  | inode->i_mode=mode  | [RBX]=S_IFSOCK|0777
+#18 | +59-98 | ... uid/gid setup ...            |                             | Set ownership       | -
+#19 | +90  | movq $0xffffffff8276e500,0x20(%rbx)| RBX=inode*                  | inode->i_op=...     | Set inode_operations
+#20 | +101 | mov %r12,%rax                      | R12=socket*                 | Return socket ptr   | RAX=socket*
+#21 | +104-112 | pop rbx, pop r12, pop rbp, ret | -                           | Cleanup & return    | Return to caller
+
+3.2 THE REGISTER ERASURE PROOF
+--------------------------------------------------------------------------------
+USER CALL: socket(AF_INET=2, SOCK_STREAM=1, protocol=0)
+
+REGISTERS AT __sys_socket ENTRY:
+  RDI = 2 (AF_INET)
+  RSI = 1 (SOCK_STREAM)
+  RDX = 0 (protocol)
+
+REGISTERS AT sock_alloc+7 (after loading sock_mnt):
+  RAX = sock_mnt value (0xffff...)
+
+REGISTERS AT sock_alloc+19 (mov 0x8(%rax),%rdi):
+  RDI = sock_mnt->mnt_sb     <<< USER'S "2" IS PHYSICALLY DESTROYED
+
+sock_alloc() CANNOT SEE:
+  - AF_INET (was in RDI, now overwritten)
+  - SOCK_STREAM (was in RSI, never read)
+  - protocol (was in RDX, never read)
+
+CONSEQUENCE: 768-byte allocation is IDENTICAL for ALL socket types.
+
+================================================================================
+CONCLUSION: THE COMPLETE CHAIN
+================================================================================
+
+COMPILE-TIME (T-0):
+  sock_fs_type, sockfs_ops, sock_mnt declaration sealed in binary
+  
+BOOT-TIME (T-2):
+  #1  core_initcall triggers sock_init()
+  #2  sock_init() -> init_inodecache() -> kmem_cache_create(768)
+  #3  sock_init() -> register_filesystem(&sock_fs_type)
+  #4  sock_init() -> kern_mount(&sock_fs_type)
+  #5  kern_mount -> vfs_kern_mount -> sockfs_mount -> mount_pseudo
+  #6  mount_pseudo: sb->s_op = &sockfs_ops              <<< WIRING
+  #7  vfs_kern_mount: mnt->mnt.mnt_sb = sb
+  #8  sock_init: sock_mnt = &mnt->mnt                   <<< SEAL ANCHOR
+
+RUNTIME (T-n):
+  #9  User calls socket(2, 1, 0)
+  #10 __sys_socket -> sock_create -> sock_alloc
+  #11 sock_alloc: RAX = [sock_mnt]                      <<< O(1) LOAD
+  #12 sock_alloc: RDI = [RAX+8] = mnt_sb               <<< USER ARGS ERASED
+  #13 sock_alloc: call new_inode_pseudo(sb)
+  #14 new_inode_pseudo -> alloc_inode
+  #15 alloc_inode: ops = sb->s_op (= &sockfs_ops)
+  #16 alloc_inode: call ops->alloc_inode (= sock_alloc_inode)
+  #17 sock_alloc_inode: ei = alloc_inode_sb(768 bytes)
+  #18 sock_alloc_inode: return &ei->vfs_inode
+  #19 sock_alloc: R12 = RAX - 128 = &ei->socket        <<< CENTAUR MATH
+  #20 sock_alloc: return R12
+
+VERIFICATION COMMANDS:
+  pahole -C socket_alloc vmlinux              # Struct layout
+  nm vmlinux | grep -E "sockfs_ops|sock_mnt"  # Symbol addresses
+  gdb -batch -ex "disassemble sock_alloc"     # Machine code
+  cat /proc/slabinfo | grep sock_inode        # Live slab stats
+  cat /proc/filesystems | grep sockfs         # FS registered
+</pre>
+
+</body>
+</html>

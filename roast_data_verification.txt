@@ -1,0 +1,8 @@
+=== STRUCT: socket (Size Check) ===
+	/* size: 128, cachelines: 2, members: 7 */
+
+=== STRUCT: inode (Size Check) ===
+	/* size: 624, cachelines: 10, members: 57 */
+
+=== SLAB: sock_inode_cache (Exact Size) ===
+sock_inode_cache    2192   2340    832   39    8 : tunables    0    0    0 : slabdata     60     60      0

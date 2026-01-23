@@ -1,0 +1,16 @@
+=== SYMBOL: sockfs_ops (From vmlinux binary) ===
+ffffffff8276e740 d sockfs_ops
+
+=== SECTION: Where does sockfs_ops live? ===
+  0 .text         014f6db0  ffffffff81000000  0000000001000000  00200000  2**12
+  2 .rodata       007c2886  ffffffff82600000  0000000002600000  01800000  2**12
+ 17 .data         0047af00  ffffffff83600000  0000000003600000  02800000  2**13
+ 19 .data..percpu 0003a000  0000000000000000  0000000003a9f000  02e00000  2**12
+ 35 .data_nosave  00001000  ffffffff83fb0000  0000000003fb0000  033b0000  2**2
+
+=== DWARF: Location info for sockfs_ops ===
+struct super_operations {
+	struct inode *             (*alloc_inode)(struct super_block *); /*     0     8 */
+	void                       (*destroy_inode)(struct inode *); /*     8     8 */
+	void                       (*free_inode)(struct inode *); /*    16     8 */
+	void                       (*dirty_inode)(struct inode *, int); /*    24     8 */

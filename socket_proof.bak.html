@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Socket Proof: Machine Data</title>
+  <style>
+    body {
+      background: #0a0a0a;
+      color: #0f0;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 30px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      margin: 0;
+    }
+
+    .cmd {
+      color: #888;
+    }
+
+    .addr {
+      color: #ff0;
+      font-weight: bold;
+    }
+
+    .val {
+      color: #0ff;
+    }
+  </style>
+</head>
+
+<body>
+  <pre>
+================================================================================
+                    MACHINE DATA: REAL ADDRESSES FROM YOUR KERNEL
+================================================================================
+
+FETCHED: 2026-01-22 21:01
+KERNEL:  6.14.0-37-generic
+COMPILED: Thu Nov 20 10:25:38 UTC 2024
+BOOT:    2026-01-22 09:54:41
+SOCKETS: 1325 currently active
+
+================================================================================
+SECTION 1: KERNEL SYMBOL TABLE
+================================================================================
+
+<span class="cmd">$ sudo grep -E "sock_|sockfs|simple_statfs" /proc/kallsyms</span>
+
+sock_alloc_inode      = <span class="addr">0xffffffffbb7ccda0</span>  t (text/function)
+sock_free_inode       = <span class="addr">0xffffffffbb7ccd60</span>  t (text/function)
+sockfs_ops            = <span class="addr">0xffffffffbbd6e740</span>  d (data/struct)
+sock_inode_cachep     = <span class="addr">0xffffffffbc38bda0</span>  d (data/pointer)
+sock_mnt              = <span class="addr">0xffffffffbd0767a0</span>  t (text/pointer)
+simple_statfs         = <span class="addr">0xffffffffbae085d0</span>  T (exported function)
+
+================================================================================
+SECTION 1B: LINKER (System.map) VS BOOT (KASLR/kallsyms) PROOF
+================================================================================
+
+The Linker assigns base addresses (T-0). KASLR shifts them at Boot (T-2).
+
+<span class="cmd">$ sudo grep sockfs_ops /boot/System.map-$(uname -r)</span>
+Linker Address (Base): <span class="addr">0xffffffff8276e740</span>
+
+<span class="cmd">$ sudo grep sockfs_ops /proc/kallsyms</span>
+Actual Address (Boot): <span class="addr">0xffffffffbbd6e740</span>
+
+CALCULATION:
+  Actual: 0xffffffffbbd6e740
+- Linker: 0xffffffff8276e740
+----------------------------
+  Shift:  0x0000000039600000 (KASLR Offset)
+
+Everything moves together. The internal offsets (like s_op at 48) remain constant.
+
+================================================================================
+SECTION 2: STRUCT OFFSETS (from kernel headers)
+================================================================================
+
+struct vfsmount:
+  mnt_root   @ offset 0   (8 bytes, pointer to dentry)
+  mnt_sb     @ offset 8   (8 bytes, pointer to super_block)
+  mnt_flags  @ offset 16  (4 bytes, int)
+  mnt_idmap  @ offset 24  (8 bytes, pointer)
+
+struct super_block:
+  s_list     @ offset 0   (16 bytes, list_head)
+  s_dev      @ offset 16  (4 bytes, dev_t)
+  s_blocksize@ offset 24  (8 bytes, unsigned long)
+  s_maxbytes @ offset 32  (8 bytes, loff_t)
+  s_type     @ offset 40  (8 bytes, pointer)
+  s_op       @ offset 48  (8 bytes, pointer to super_operations)
+
+struct super_operations:
+  alloc_inode @ offset 0  (8 bytes, function pointer)
+  free_inode  @ offset 8  (8 bytes, function pointer)  
+  statfs      @ offset 16 (8 bytes, function pointer)
+
+struct socket_alloc:
+  socket     @ offset 0   (128 bytes)
+  vfs_inode  @ offset 128 (592 bytes)
+  TOTAL SIZE = 720 bytes
+
+================================================================================
+SECTION 3: THE CHAIN VERIFICATION
+================================================================================
+
+START: sock_mnt = <span class="addr">0xffffffffbd0767a0</span>
+
+STEP 1: RAM[sock_mnt] -> vfsmount address
+        (This is the vfsmount struct created by kern_mount)
+
+STEP 2: RAM[vfsmount + 8] -> super_block address
+        offset 8 = mnt_sb field
+
+STEP 3: RAM[super_block + 48] -> super_operations address
+        offset 48 = s_op field
+        Result = <span class="addr">0xffffffffbbd6e740</span> (sockfs_ops)
+
+STEP 4: RAM[sockfs_ops + 0] -> function address
+        offset 0 = alloc_inode field
+        Result = <span class="addr">0xffffffffbb7ccda0</span> (sock_alloc_inode)
+
+CONCLUSION: The chain leads to sock_alloc_inode.
+
+================================================================================
+SECTION 4: SOCKFS_OPS TABLE CONTENTS
+================================================================================
+
+sockfs_ops @ <span class="addr">0xffffffffbbd6e740</span>:
+
+  +0:  alloc_inode  = <span class="addr">0xffffffffbb7ccda0</span>  (sock_alloc_inode)
+  +8:  free_inode   = <span class="addr">0xffffffffbb7ccd60</span>  (sock_free_inode)
+  +16: statfs       = <span class="addr">0xffffffffbae085d0</span>  (simple_statfs)
+
+SOURCE: /usr/src/linux-source-6.8.0/net/socket.c
+
+static const struct super_operations sockfs_ops = {
+    .alloc_inode    = sock_alloc_inode,
+    .free_inode     = sock_free_inode,
+    .statfs         = simple_statfs,
+};
+
+================================================================================
+SECTION 5: MEMORY POOL
+================================================================================
+
+sock_inode_cachep @ <span class="addr">0xffffffffbc38bda0</span>
+
+This global pointer holds the address of the kmem_cache descriptor.
+The descriptor manages a pool of 720-byte blocks.
+
+<span class="cmd">$ sudo cat /proc/slabinfo | grep sock_inode</span>
+sock_inode_cache  (pool for 720-byte socket_alloc structs)
+
+Each socket() call:
+  1. sock_alloc_inode reads sock_inode_cachep
+  2. Calls kmem_cache_alloc with the pool address
+  3. Pool returns a free 720-byte block
+  4. Block contains: socket (0-127) + inode (128-719)
+
+================================================================================
+SECTION 6: PROOF THAT ARGUMENTS ARE IGNORED
+================================================================================
+
+sock_alloc() signature from net/socket.c:
+
+    struct socket *sock_alloc(void)
+
+The (void) means NO ARGUMENTS.
+
+socket(2, 1, 0) passes 2, 1, 0 to __sys_socket.
+__sys_socket calls sock_alloc().
+sock_alloc() receives NOTHING.
+
+Therefore:
+  - sock_alloc() cannot see AF_INET (2)
+  - sock_alloc() cannot see SOCK_STREAM (1)
+  - sock_alloc() cannot see protocol (0)
+
+The 720-byte allocation is IDENTICAL for:
+  - socket(AF_INET, SOCK_STREAM, 0)
+  - socket(AF_INET6, SOCK_DGRAM, 0)
+  - socket(AF_UNIX, SOCK_SEQPACKET, 0)
+
+================================================================================
+SECTION 7: LIVE VERIFICATION COMMANDS
+================================================================================
+
+<span class="cmd"># Verify kernel version</span>
+cat /proc/version
+
+<span class="cmd"># Verify boot time</span>
+uptime -s
+
+<span class="cmd"># Verify socket count</span>
+cat /proc/net/sockstat | head -1
+
+<span class="cmd"># Verify kernel symbols</span>
+sudo grep sock_mnt /proc/kallsyms
+sudo grep sock_alloc_inode /proc/kallsyms
+sudo grep sockfs_ops /proc/kallsyms
+sudo grep sock_inode_cachep /proc/kallsyms
+
+<span class="cmd"># Verify sockfs source</span>
+grep -A5 "sockfs_ops" /usr/src/linux-source-*/net/socket.c
+
+================================================================================
+SECTION 8: HEXADECIMAL ARITHMETIC
+================================================================================
+
+Example allocation block at <span class="addr">0xffff8f4e33230340</span>:
+
+socket address = block + 0   = 0xffff8f4e33230340
+inode address  = block + 128 = 0xffff8f4e33230340 + 0x80
+                             = 0xffff8f4e332303c0
+
+SOCKET_I macro does the reverse:
+  inode address - 128 = socket address
+  0xffff8f4e332303c0 - 0x80 = 0xffff8f4e33230340
+
+================================================================================
+                              END OF MACHINE DATA
+================================================================================
+    </pre>
+</body>
+
+</html>

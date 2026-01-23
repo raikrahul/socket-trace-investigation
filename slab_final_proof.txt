@@ -1,0 +1,26 @@
+=== DISASSEMBLY: sock_init (Allocation setup) ===
+   0xffffffff83b9bc3f <+143>:	e8 ec 0a b3 fd     	call   0xffffffff816cc730 <__kmem_cache_create_args>
+   0xffffffff83b9bc44 <+148>:	48 89 05 55 01 1f ff	mov    %rax,-0xe0feab(%rip)        # 0xffffffff82d8bda0 <sock_inode_cachep>
+   0xffffffff83b9bc4b <+155>:	48 85 c0           	test   %rax,%rax
+   0xffffffff83b9bc4e <+158>:	74 5d              	je     0xffffffff83b9bcad <sock_init+253>
+   0xffffffff83b9bc50 <+160>:	48 c7 c7 c0 2d 9c 83	mov    $0xffffffff839c2dc0,%rdi
+   0xffffffff83b9bc57 <+167>:	e8 a4 af c5 fd     	call   0xffffffff817f6c00 <register_filesystem>
+   0xffffffff83b9bc5c <+172>:	89 c3              	mov    %eax,%ebx
+   0xffffffff83b9bc5e <+174>:	85 c0              	test   %eax,%eax
+   0xffffffff83b9bc60 <+176>:	0f 85 72 ff ff ff  	jne    0xffffffff83b9bbd8 <sock_init+40>
+   0xffffffff83b9bc66 <+182>:	48 c7 c7 c0 2d 9c 83	mov    $0xffffffff839c2dc0,%rdi
+   0xffffffff83b9bc6d <+189>:	e8 ee e5 c5 fd     	call   0xffffffff817fa260 <kern_mount>
+   0xffffffff83b9bc72 <+194>:	48 89 05 27 ab ed ff	mov    %rax,-0x1254d9(%rip)        # 0xffffffff83a767a0 <sock_mnt>
+   0xffffffff83b9bc79 <+201>:	48 3d 00 f0 ff ff  	cmp    $0xfffffffffffff000,%rax
+   0xffffffff83b9bc7f <+207>:	77 19              	ja     0xffffffff83b9bc9a <sock_init+234>
+   0xffffffff83b9bc81 <+209>:	e8 ca 1a 00 00     	call   0xffffffff83b9d750 <netfilter_init>
+   0xffffffff83b9bc86 <+214>:	89 c3              	mov    %eax,%ebx
+   0xffffffff83b9bc88 <+216>:	85 c0              	test   %eax,%eax
+   0xffffffff83b9bc8a <+218>:	0f 85 48 ff ff ff  	jne    0xffffffff83b9bbd8 <sock_init+40>
+   0xffffffff83b9bc90 <+224>:	e8 2b 12 00 00     	call   0xffffffff83b9cec0 <ptp_classifier_init>
+   0xffffffff83b9bc95 <+229>:	e9 3e ff ff ff     	jmp    0xffffffff83b9bbd8 <sock_init+40>
+   0xffffffff83b9bc9a <+234>:	48 c7 c7 c0 2d 9c 83	mov    $0xffffffff839c2dc0,%rdi
+
+=== SLAB STATS (Real Machine) ===
+768
+832

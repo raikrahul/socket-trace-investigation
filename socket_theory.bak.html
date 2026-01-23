@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Socket Creation: The Complete Derivation</title>
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            padding: 30px;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <pre>
+================================================================================
+              SOCKET CREATION: WHY socket() RETURNS fd REGARDLESS OF ARGUMENTS
+================================================================================
+
+This document proves that socket(2, 1, 0) allocates memory identically to
+socket(10, 2, 17). The arguments do not affect the allocation phase.
+
+The proof follows three time periods:
+  T-0: Compile Time (when kernel was built)
+  T-2: Boot Time (when you powered on)
+  T-4: Runtime (when you call socket)
+
+================================================================================
+                              COMPILE TIME (T-0)
+================================================================================
+
+The compiler processed /usr/src/linux-source-6.8.0/net/socket.c.
+
+PROOF OF COMPILATION:
+$ cat /proc/version
+Linux version 6.14.0-37-generic ... 
+compiled: Thu Nov 20 10:25:38 UTC 2024
+using gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04)
+
+01. COMPILER: Determines Offsets and Logic.
+    It defined struct layouts. It decided that s_op is at offset 48.
+    - struct socket_alloc total size = 720 bytes (from 128 + 592)
+
+02. LINKER: Assigns Base Addresses.
+    The linker combined the object files and assigned FIXED addresses to 
+    global symbols in the file /boot/System.map-6.14.0-37-generic.
+
+    PROOF FROM SYSTEM.MAP (On Disk):
+    $ sudo grep -E "sockfs_ops|sock_alloc_inode" /boot/System.map-$(uname -r)
+    ffffffff8276e740 d sockfs_ops
+    ffffffff821ccda0 t sock_alloc_inode
+
+    DEBUG PROOF (DWARF Struct Layouts):
+    The compiler locked in these sizes at T-0:
+    - struct socket_alloc {
+        struct socket socket;      /* offset 0,   size 128 */
+        struct inode  vfs_inode;   /* offset 128, size 624 */
+        /* total size: 768, padding: 16 */
+      }
+
+    02. The compiler/linker created sockfs_ops table:
+
+    PROOF FROM SOURCE (/usr/src/linux-source-6.8.0/net/socket.c:351):
+    351: static const struct super_operations sockfs_ops = {
+    352:     .alloc_inode    = sock_alloc_inode,
+    353:     .free_inode     = sock_free_inode,
+    354:     .statfs         = simple_statfs,
+    355: };
+
+03. BOOT (KASLR): Shifts the addresses.
+    When the kernel boots, it moves these addresses by a random offset 
+    (KASLR) for security. 
+    - Base (System.map): ffffffff8276e740
+    - Actual (kallsyms): ffffffffbbd6e740
+    - The shift is exactly 0x39600000. 
+    Everything moves together, so the *relative* distances (offsets) remain identical.
+
+================================================================================
+                               BOOT TIME (T-2)
+================================================================================
+
+When you pressed the power button, sock_init() executed.
+
+05. sock_init() called kmem_cache_create("sock_inode_cache", 720, ...).
+    This created a pool for 720-byte blocks.
+    The pool descriptor address was stored in sock_inode_cachep.
+
+    DEBUG PROOF (Live Memory Pool):
+    $ sudo cat /proc/slabinfo | grep sock_inode
+    sock_inode_cache    2099   2340    832   39    8
+    (Status: 2099 objects are currently allocated in this pool)
+
+06. sock_init() called kern_mount(&sock_fs_type).
+
+--------------------------------------------------------------------------------
+                    WHAT kern_mount() DID (THE CRITICAL CHAIN)
+--------------------------------------------------------------------------------
+
+Step 1: Allocate super_block
+
+    super_block_address = kmalloc(sizeof(super_block))
+
+    super_block (at super_block_address)
+    +------------------+
+    | s_list    (0)    |  <- address of linked list node
+    | s_dev     (16)   |  <- device number
+    | s_blocksize (24) |  <- block size in bytes
+    | s_maxbytes (32)  |  <- maximum file size
+    | s_type    (40)   |  <- address of filesystem type
+    | s_op      (48)   |  <- address of operations table
+    | more fields...   |
+    +------------------+
+
+    WHY: The super_block is the "root" metadata structure for any filesystem.
+    Even though sockfs is invisible (no disk), the VFS requires this structure
+    to exist so it has a place to look up how to perform filesystem-level 
+    operations (like creating inodes).
+
+    REAL DATA PROOF (DWARF Offsets):
+    struct super_block {
+        struct list_head s_list;        /*     0    16 */
+        dev_t            s_dev;         /*    16     4 */
+        /* XXX 3 bytes hole */
+        long unsigned int s_blocksize;  /*    24     8 */
+        struct file_system_type *s_type;/*    40     8 */
+        const struct super_operations *s_op; /* 48  8 */
+    }
+    (The VFS expects s_op specifically at byte 48 to find the callback table)
+
+Step 2: Set s_op field
+
+    At compile time, the compiler processed net/socket.c and created:
+
+    static const struct super_operations sockfs_ops = {
+        .alloc_inode    = sock_alloc_inode,     // 0xffffffffbb7ccda0
+        .free_inode     = sock_free_inode,      // 0xffffffffbb7ccd60
+        .statfs         = simple_statfs,        // 0xffffffffbae085d0
+    };
+
+    The compiler placed sockfs_ops at address 0xffffffffbbd6e740.
+
+    PROOF OF ADDRESS DISCOVERY:
+    1. Base Address (Linker/System.map): ffffffff8276e740
+    2. Live Address (Boot/kallsyms): ffffffffbbd6e740
+       $ sudo grep sockfs_ops /proc/kallsyms
+    3. Calculation: Live - Base = 0x39600000 (The KASLR Shift)
+    This confirms the structure was moved from its linker position to its live RAM position during boot.
+
+    Now kern_mount() writes this compile-time address:
+
+    super_block_address->s_op = 0xffffffffbbd6e740
+
+    super_block                    sockfs_ops (at 0xffffffffbbd6e740)
+    +------------------+          +---------------------------+
+    | s_list    (0)    |          | alloc_inode (0)           |
+    | s_dev     (16)   |          |   = 0xffffffffbb7ccda0    |
+    | s_blocksize (24) |          | free_inode (8)            |
+    | s_maxbytes (32)  |          |   = 0xffffffffbb7ccd60    |
+    | s_type    (40)   |          | statfs (16)               |
+    | s_op      (48)   |--------> |   = 0xffffffffbae085d0    |
+    | more fields...   |          +---------------------------+
+    +------------------+
+
+    WHY: This is the core "bridge" between the generic kernel and the
+    socket-specific code. By writing the address of the sockfs_ops table
+    into the s_op field, we are hardwiring the super_block to use
+    socket-specific logic. Without this, the VFS would have no way to
+    reach the sock_alloc_inode function.
+
+    REAL DATA PROOF (Live Table Contents):
+    $ sudo gdb -batch -ex "p/x sockfs_ops" vmlinux
+    sockfs_ops = {
+        .alloc_inode = 0xffffffff821ccda0 (sock_alloc_inode),
+        .free_inode  = 0xffffffff821ccd60 (sock_free_inode),
+        .statfs      = 0xffffffff818085d0 (simple_statfs)
+    }
+    
+    VERIFICATION:
+    - The pointer at index 0 of the table is EXACTLY the address of 
+      sock_alloc_inode.
+    - When the VFS calls super_block->s_op->alloc_inode(), it follows 
+      the chain to this exact code block.
+
+Step 3: Allocate vfsmount
+
+    vfsmount_address = kmalloc(sizeof(vfsmount))
+
+    vfsmount (at vfsmount_address)
+    +------------------+
+    | mnt_root  (0)    |  <- address of root directory (NULL initially)
+    | mnt_sb    (8)    |  <- address of super_block (NULL initially)
+    | mnt_flags (16)   |  <- mount flags (0 initially)
+    | mnt_idmap (24)   |  <- address of ID mapping (NULL initially)
+    +------------------+
+
+    WHY: A super_block represents the "what" (the filesystem type), but a 
+    vfsmount represents the "where" (the mount instance). The kernel treats 
+    sockfs as a virtual mount point. This structure is required because the 
+    VFS manages files via mount points, and even a "fake" filesystem must 
+    have a mount point to be reachable.
+
+    REAL DATA PROOF (DWARF Layout):
+    struct vfsmount {
+        struct dentry *mnt_root;  /* offset 0,  size 8 */
+        struct super_block *mnt_sb; /* offset 8,  size 8 */
+        int mnt_flags;             /* offset 16, size 4 */
+        /* XXX 4 bytes hole */
+        struct mnt_idmap *mnt_idmap; /* offset 24, size 8 */
+    }
+
+    REAL DATA PROOF (Filesystem Type):
+    $ cat /proc/filesystems | grep sockfs
+    nodev   sockfs
+    (Proof that the kernel recognizes sockfs as a valid but virtual filesystem)
+
+Step 4: Set mnt_sb field
+
+    kern_mount() wrote super_block_address into the mnt_sb field of vfsmount:
+
+    vfsmount_address->mnt_sb = super_block_address
+
+    vfsmount                      super_block
+    +------------------+          +------------------+
+    | mnt_root  (0)    |          | s_list    (0)    |
+    | mnt_sb    (8)    |--------> | s_dev     (16)   |
+    | mnt_flags (16)   |          | s_blocksize (24) |
+    | mnt_idmap (24)   |          | s_maxbytes (32)  |
+    +------------------+          | s_type    (40)   |
+                                  | s_op      (48)   |-----> sockfs_ops
+                                  | more fields...   |
+                                  +------------------+
+
+    WHY: This connects the "instance" (vfsmount) to the "data" (super_block).
+    When the kernel accesses the sockfs filesystem via its mount point, it
+    follows this pointer to find the super_block, which then leads to the
+    function table. It is the second link in the chain from global memory 
+    to socket-specific code.
+
+Step 5: Store vfsmount address globally
+
+    sock_mnt is declared as: static struct vfsmount *sock_mnt
+    sock_mnt was NULL before this assignment.
+
+    sock_mnt = vfsmount_address
+
+    WHY: This is the "Entry Point". The kernel can have hundreds of mounts 
+    (ext4, proc, sysfs). By storing the address of the sockfs mount in a 
+    dedicated global variable (sock_mnt), the socket system avoids 
+    searching through all mount points every time a user calls socket(). 
+    It provides O(1) access to the entire callback chain.
+
+    REAL DATA PROOF (O(1) vs O(N)):
+    $ mount | wc -l
+    46
+    (Truth: Your system currently has 46 active filesystems. Rather than 
+    iterating through 46 structures to find where 'sockfs' is mounted, 
+    the kernel simply reads the 8 bytes at ffffffffbd0767a0).
+
+--------------------------------------------------------------------------------
+                           THE POETRY OF THE DESCENT
+--------------------------------------------------------------------------------
+
+01. Discovery:  sock_mnt (ffffffffbd0767a0)
+02. Connection: sock_mnt → vfsmount
+03. Descent:    vfsmount + 8 → super_block
+04. Bridge:     super_block + 48 → sockfs_ops (ffffffffbbd6e740)
+05. Knowledge:  sockfs_ops + 0 → sock_alloc_inode (ffffffffbb7ccda0)
+06. Command:    Execute(sock_alloc_inode)
+07. Creation:   RAM → Pool → 768 Bytes
+
+∴ Static Symbol → Dynamic Pointer → Living Memory.
+--------------------------------------------------------------------------------
+
+================================================================================
+                              RUNTIME (T-4)
+================================================================================
+
+07. You call socket(2, 1, 0).
+
+08. Kernel enters __sys_socket(family=2, type=1, protocol=0).
+
+09. __sys_socket() calls sock_alloc().
+
+10. sock_alloc() signature is: struct socket *sock_alloc(void)
+    It takes NO ARGUMENTS.
+    The numbers 2, 1, 0 are NOT passed to sock_alloc.
+
+    DEBUG PROOF (Function Signature):
+    File net/socket.c:617:
+    struct socket *sock_alloc(void);
+    (The CPU register state (rdi, rsi, rdx) containing 2, 1, 0 is ignored)
+
+--------------------------------------------------------------------------------
+                         THE ALLOCATION (IGNORES ARGUMENTS)
+--------------------------------------------------------------------------------
+
+11. sock_alloc() reads sock_mnt (0xffffffffbd0767a0).
+12. sock_alloc() reads RAM[sock_mnt] to get vfsmount address.
+13. sock_alloc() reads RAM[vfsmount + 8] to get super_block address.
+14. sock_alloc() reads RAM[super_block + 48] to get sockfs_ops address.
+15. sock_alloc() reads RAM[sockfs_ops + 0] to get function address.
+16. Function address = 0xffffffffbb7ccda0 = sock_alloc_inode.
+17. Kernel calls sock_alloc_inode().
+
+18. sock_alloc_inode() reads sock_inode_cachep (pool descriptor).
+19. sock_alloc_inode() calls kmem_cache_alloc(pool, ...).
+20. Pool returns a 720-byte block.
+
+21. The 720-byte block contains:
+    - socket at offset 0 (128 bytes)
+    - inode at offset 128 (592 bytes)
+
+22. sock_alloc_inode() initializes socket fields:
+    - socket.state = 0 (SS_UNCONNECTED)
+    - socket.sk = NULL
+    - socket.ops = NULL
+    - socket.file = NULL
+
+23. sock_alloc_inode() returns address of inode (block + 128).
+
+    DESIGN WHY (The Disguise): 
+    The VFS framework is the master of files, but it is blind to sockets. 
+    It demands a 'struct inode' pointer. By returning the address at 
+    offset 128, we satisfy the VFS API. We "disguise" our 768-byte 
+    Centaur as a standard Inode to sneak it through the generic VFS 
+    creation code (new_inode_pseudo).
+
+24. sock_alloc() uses SOCKET_I macro to subtract 128.
+    This gives the socket address.
+
+    WHY: This is a "Upcast" in C. The VFS only understands 'struct inode'. 
+    But we allocated a 'struct socket_alloc' which contains BOTH.
+    The Inode is at offset 128. To get the Socket (at offset 0), we must 
+    subtract 128 from the Inode's memory address.
+
+    REAL DATA PROOF (Variable Definition):
+    File: include/net/sock.h:1560
+    static inline struct socket *SOCKET_I(struct inode *inode) {
+        return &container_of(inode, struct socket_alloc, vfs_inode)->socket;
+    }
+
+    AXIOM OF CONTAINER_OF:
+    Address of Parent = Address of Child - Offset of Child in Parent.
+    Addr(socket_alloc) = Addr(vfs_inode) - 128.
+
+    DESIGN WHY (The Heist):
+    After the VFS is done initializing the 'file' aspects of the object, 
+    the socket system needs to take control. Since we gave away the 
+    address of the "middle" (the inode), we must now perform a heist to 
+    recover the "head" (the socket). We subtract 128 to jump back to 
+    the start of the block.
+
+25. sock_alloc() returns the socket address.
+
+    DEBUG PROOF (Disassembly Pointer Arithmetic):
+    Dump of assembler code for function sock_alloc:
+    0xffffffff821cc414 <+36>: lea -0x80(%rax),%r12
+    (Proof: It subtracts 128 bytes (0x80) from the inode address in %rax 
+    to find the socket address in %r12)
+
+    THE DANCE OF THE CENTAUR:
+    1. Allocate LARGE (768 bytes)
+       Caller: sock_alloc_inode | Callee: kmem_cache_alloc
+       Args: sock_inode_cachep, GFP_KERNEL
+       Code: kmem_cache_alloc(sock_inode_cachep, GFP_KERNEL)
+
+    2. Hide Socket (Offset 0-127)
+       Caller: sock_alloc_inode | Callee: Internal
+       Args: struct socket_alloc *ei
+       Code: ei->socket.state = SS_UNCONNECTED (at block address + 0)
+
+    3. Show Inode (Offset 128-767)
+       Caller: sock_alloc_inode | Callee: Return
+       Args: &ei->vfs_inode
+       Code: return &ei->vfs_inode; (at block address + 128)
+
+    4. Pass Inode to VFS (The satisfaction)
+       Caller: new_inode_pseudo | Callee: alloc_inode (callback)
+       Args: struct super_block *sb
+       Code: inode = sb->s_op->alloc_inode(sb)
+
+    5. Subtract 128 (The recovery)
+       Caller: sock_alloc | Callee: SOCKET_I (Macro)
+       Args: struct inode *inode
+       Code: lea -0x80(%rax), %r12 (rax is inode, r12 is socket)
+
+    6. Return Socket (The Result)
+       Caller: __sys_socket | Callee: sock_alloc
+       Args: void
+       Code: sock = sock_alloc()
+
+    WHAT DESIGN: This is the "Colocated Design". By placing the Socket and 
+    Inode in a single memory block, the CPU only needs one cache-line 
+    fetch to access both. It is the fastest possible way to bridge 
+    the world of Files (VFS) and the world of Networks (Socket).
+
+================================================================================
+                                 THE PROOF
+================================================================================
+
+The allocation (steps 11-25) used:
+  - sock_mnt (set at boot)
+  - sock_inode_cachep (set at boot)
+  - sockfs_ops (set at compile time)
+  - 720 (computed at compile time)
+
+The allocation did NOT use:
+  - 2 (AF_INET)
+  - 1 (SOCK_STREAM)
+  - 0 (protocol)
+
+These arguments are used AFTER allocation to configure the socket.
+But the memory allocation is identical regardless of arguments.
+
+THEREFORE: socket() returns fd regardless of arguments.
+
+================================================================================
+                           STATE AFTER ALLOCATION
+================================================================================
+
+ADDRESS of struct socket   = (block address)
+ADDRESS of struct inode    = (block address + 128)
+socket.state               = 0
+socket.sk                  = 0 (NULL)
+socket.ops                 = 0 (NULL)
+socket.file                = 0 (NULL)
+BYTES allocated            = 720
+
+WHAT HAS NOT HAPPENED YET:
+- The number 2 (AF_INET) has NOT been used.
+- The number 1 (SOCK_STREAM) has NOT been used.
+- The number 0 (protocol) has NOT been used.
+- No TCP engine has been created.
+- No protocol methods have been assigned.
+- The socket is an EMPTY container.
+
+================================================================================
+                      NEW THINGS INTRODUCED WITHOUT DERIVATION
+================================================================================
+
+- kmem_cache_create (kernel function)
+- kmem_cache_alloc (kernel function)
+- kern_mount (kernel function)
+
+================================================================================
+    </pre>
+</body>
+
+</html>

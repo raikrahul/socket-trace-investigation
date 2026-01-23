@@ -1,0 +1,67 @@
+=== STRUCT: socket (DWARF) ===
+struct socket {
+	socket_state               state;                /*     0     4 */
+	short int                  type;                 /*     4     2 */
+
+	/* XXX 2 bytes hole, try to pack */
+
+	long unsigned int          flags;                /*     8     8 */
+	struct file *              file;                 /*    16     8 */
+	struct sock *              sk;                   /*    24     8 */
+	const struct proto_ops  *  ops;                  /*    32     8 */
+
+	/* XXX 24 bytes hole, try to pack */
+
+	/* --- cacheline 1 boundary (64 bytes) --- */
+	struct socket_wq           wq __attribute__((__aligned__(64))); /*    64    64 */
+
+	/* XXX last struct has 8 bytes of padding */
+
+	/* size: 128, cachelines: 2, members: 7 */
+	/* sum members: 102, holes: 2, sum holes: 26 */
+	/* paddings: 1, sum paddings: 8 */
+	/* forced alignments: 1, forced holes: 1, sum forced holes: 24 */
+} __attribute__((__aligned__(64)));
+
+
+=== STRUCT: inode (DWARF) ===
+struct inode {
+	umode_t                    i_mode;               /*     0     2 */
+	short unsigned int         i_opflags;            /*     2     2 */
+	kuid_t                     i_uid;                /*     4     4 */
+	kgid_t                     i_gid;                /*     8     4 */
+	unsigned int               i_flags;              /*    12     4 */
+	struct posix_acl *         i_acl;                /*    16     8 */
+	struct posix_acl *         i_default_acl;        /*    24     8 */
+	const struct inode_operations  * i_op;           /*    32     8 */
+	struct super_block *       i_sb;                 /*    40     8 */
+	struct address_space *     i_mapping;            /*    48     8 */
+	void *                     i_security;           /*    56     8 */
+	/* --- cacheline 1 boundary (64 bytes) --- */
+	long unsigned int          i_ino;                /*    64     8 */
+	union {
+		const unsigned int i_nlink;              /*    72     4 */
+		unsigned int       __i_nlink;            /*    72     4 */
+	};                                               /*    72     4 */
+	dev_t                      i_rdev;               /*    76     4 */
+	loff_t                     i_size;               /*    80     8 */
+	/* sum members: 616, holes: 2, sum holes: 8 */
+	/* forced alignments: 2 */
+	/* last cacheline: 48 bytes */
+} __attribute__((__aligned__(8)));
+
+
+=== STRUCT: socket_alloc (DWARF) ===
+struct socket_alloc {
+	struct socket              socket __attribute__((__aligned__(64))); /*     0   128 */
+	/* --- cacheline 2 boundary (128 bytes) --- */
+	struct inode               vfs_inode __attribute__((__aligned__(8))); /*   128   624 */
+
+	/* size: 768, cachelines: 12, members: 2 */
+	/* padding: 16 */
+	/* forced alignments: 2 */
+} __attribute__((__aligned__(64)));
+
+
+=== SLAB: sock_inode_cache (Live) ===
+sock_inode_cache    2176   2340    832   39    8 : tunables    0    0    0 : slabdata     60     60      0

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>The Physical Architecture of Socket Infrastructure: An Axiomatic Derivation</title>
+    <style>
+        body {
+            background: #fff;
+            color: #000;
+            font-family: 'Times New Roman', serif;
+            padding: 80px;
+            max-width: 900px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        .header-box {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
+            border-bottom: 1px solid #000;
+            padding-bottom: 10px;
+        }
+
+        .author {
+            margin-top: 20px;
+            font-size: 16px;
+        }
+
+        .abstract {
+            margin: 40px 0;
+            font-style: italic;
+            border: 1px solid #eee;
+            padding: 20px;
+            background: #fdfdfd;
+        }
+
+        .section-title {
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 40px;
+            border-bottom: 1px solid #000;
+            display: inline-block;
+        }
+
+        .derivation-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 13px;
+        }
+
+        .derivation-table td {
+            vertical-align: top;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .input-col {
+            width: 30%;
+            color: #666;
+        }
+
+        .comp-col {
+            width: 40%;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .output-col {
+            width: 30%;
+            color: #c00;
+        }
+
+        .proof-box {
+            background: #f8f8f8;
+            padding: 15px;
+            border-left: 3px solid #000;
+            font-family: 'SF Mono', monospace;
+            font-size: 12px;
+            margin: 10px 0;
+        }
+
+        .footnote {
+            font-size: 11px;
+            color: #777;
+            margin-top: 60px;
+            border-top: 1px dashed #ccc;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header-box">
+        <div class="title">The Physical Architecture of Socket Infrastructure</div>
+        <div class="author">Axiomatic Derivation from Linux 6.14.0-37-generic Kernel Binary</div>
+    </div>
+
+    <div class="abstract">
+        This paper derives the existence of the Linux socket subsystem from hardware axioms and binary forensics. We
+        demonstrate that the socket interface is not an emergent property but the result of a deterministic, tiered
+        initialization sequence (Initcalls) mapped within the ELF binary segments.
+    </div>
+
+    <div class="section-title">I. Physical Prerequisites (Memory & Hardware)</div>
+    <table class="derivation-table">
+        <tr>
+            <td class="input-col">Phys Memory Cells</td>
+            <td class="comp-col">setup_arch() @ ffffffff83af2c00</td>
+            <td class="output-col">Virt Page Tables ✓</td>
+        </tr>
+        <tr>
+            <td class="input-col">CPU Trap Pin</td>
+            <td class="comp-col">trap_init() @ ffffffff83af1ef0</td>
+            <td class="output-col">IDT Vectors ✓</td>
+        </tr>
+        <tr>
+            <td class="input-col">Pages</td>
+            <td class="comp-col">kmem_cache_init() @ ffffffff83b49f50</td>
+            <td class="output-col">Slab Allocator ✓</td>
+        </tr>
+    </table>
+
+    <div class="section-title">II. Namespace Readiness (VFS)</div>
+    <div class="proof-box">
+        Socket allocation requires a VFS Inode. Inodes require the Inode Cache.
+        $ nm vmlinux | grep vfs_caches_init
+        ffffffff83b52980 T vfs_caches_init
+    </div>
+    <table class="derivation-table">
+        <tr>
+            <td class="input-col">Slabs</td>
+            <td class="comp-col">vfs_caches_init()</td>
+            <td class="output-col">Inode/Dentry Caches ✓</td>
+        </tr>
+    </table>
+
+    <div class="section-title">III. The Call Sequence (The Genesis Thread)</div>
+    <div class="proof-box">
+        Control Flow: start_kernel -> rest_init -> kernel_init (PID 1)
+        PID 1 Entry Point: ffffffff824e6410
+    </div>
+    <table class="derivation-table">
+        <tr>
+            <td class="input-col">Initcall Tables</td>
+            <td class="comp-col">do_initcalls() @ ffffffff83adaaf0</td>
+            <td class="output-col">Subsystem Sequence ✓</td>
+        </tr>
+    </table>
+
+    <div class="section-title">IV. Socket Subsystem Birth (Level 1)</div>
+    <div class="proof-box">
+        Level 1 Priority Pointer: ffffffff83da7ef0 -> sock_init
+    </div>
+    <table class="derivation-table">
+        <tr>
+            <td class="input-col">VFS + Slab</td>
+            <td class="comp-col">sock_init() @ ffffffff83b9bbb0</td>
+            <td class="output-col">sockfs + slab_cache ✓</td>
+        </tr>
+    </table>
+
+    <div class="section-title">V. Protocol Mapping (Level 5)</div>
+    <div class="proof-box">
+        Level 5 Priority Pointer: ffffffff83da8460 -> inet_init
+    </div>
+    <table class="derivation-table">
+        <tr>
+            <td class="input-col">sockfs Anchor</td>
+            <td class="comp-col">inet_init() @ ffffffff83b9efe0</td>
+            <td class="output-col">Protocol Hash (inetsw) ✓</td>
+        </tr>
+    </table>
+
+    <div class="section-title">Conclusion</div>
+    <p>
+        The socket infrastructure is a layered construction where each phase depends on the mathematical presence of the
+        previous. Without the Slab and VFS caches (Phase I/II), the sock_init logic fails at the memory transaction
+        layer. The enforcement of this sequence by the Linker ensures O(1) reliability across all instances of socket
+        creation.
+    </p>
+
+    <div class="footnote">
+        Methodology: Binary analysis via `nm`, `readelf`, and `pahole` on Linux 6.14.0-37-generic (x86-64).
+        Timestamp: January 23, 2026.
+    </div>
+
+</body>
+
+</html>

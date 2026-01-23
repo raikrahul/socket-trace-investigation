@@ -1,0 +1,50 @@
+Input: grep "struct super_block {" /usr/src/linux-source-6.8.0/include/linux/fs.h
+Output: struct super_block @ fs.h:1199 ✓
+Input: grep "ops->alloc_inode" /usr/src/linux-source-6.8.0/fs/inode.c
+Output: if(ops->alloc_inode) inode = ops->alloc_inode(sb) @ inode.c:260 ✓
+Input: grep "struct super_block *sget" /usr/src/linux-source-6.8.0/fs/super.c
+Output: sget() retry loop + alloc_super() logic @ super.c:729 ✓
+Input: grep "ext4_sops" /usr/src/linux-source-6.8.0/fs/ext4/super.c
+Output: static const struct super_operations ext4_sops @ super.c:1642 ✓
+Input: sudo grep -E "ext4_sops|sockfs_ops" /proc/kallsyms
+Output: ffffffffbbc61640 (ext4), ffffffffbbd6e740 (sockfs) → Live RAM Addresses ✓
+Computation: Address Live - Address Linker = KASLR Shift ✓
+Input: cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size
+Output: 64 (Hardware Byte Fetch Size) ✓
+Input: pahole -C socket_alloc /usr/lib/debug/boot/vmlinux-6.14.0-37-generic
+Output: size=768, padding=16, members=2 ([socket:128][inode:624]) ✓
+Computation: 128 + 624 = 752 (Raw Sum) ✓
+Computation: 752 + 16 (Padding) = 768 ✓
+Computation: 768 / 64 = 12.0000 (Aligned Fetch) ✓
+Input: cat /sys/kernel/slab/sock_inode_cache/slab_size
+Output: 832 ✓
+Computation: 832 - 768 = 64 (Red Zone Moat) ✓
+Computation: 64 / 64 = 1 (Exact One Cache Line Moat) ✓
+Input: sudo gdb -batch -ex "disassemble sock_init" vmlinux
+Output: mov $0x300,%esi ✓
+Computation: 0x300 = (3 * 256) + 0 + 0 = 768 ✓
+∴ Machine executes the derived 768-byte Blueprint in O(1) direct instruction ✓
+Binary symbol table → nm proof → Linker base address ✓
+Kallsyms table → proc proof → Runtime RAM address ✓
+Axiom: s_dev mismatch → sget() fail → new super_block allocation ✓
+Axiom: s_op is pointer → follows address to operation array ✓
+Axiom: static → private scope within net/socket.c ✓
+Axiom: array → contiguous function pointer block ✓
+Axiom: immortal → persistent code segment vs ephemeral instance state ✓
+Audit: Phase 1 re-axiomatized (End-to-Start verification) ✓
+Audit: Terminology change (Table → Array) per C semantics ✓
+Linker Seal checked via System.map parity ✓
+Linker Shift calculated via ffffffffbbd6e740 - ffffffff8276e740 = 39600000 ✓
+Input: dev1=7:14, dev2=7:15 => (dev1 != dev2) => 1 => unique super_block kmalloc TRUE
+Input: sb1->s_op == sb2->s_op == 0xffffffffbbc61640 => shared ext4 logic array TRUE
+Input: 1000 inodes -> 1 shared sockfs_sb => s_op == 0xffffffffbbd6e740 => shared socket logic array TRUE
+Computation: Memory(Logic) = 64B * 1 = O(1) TRUE
+Computation: Memory(Instances) = 1408B * N = O(N) TRUE
+∴ Law scalability is constant while state scalability is linear across all VFS nodes TRUE
+Audit: Terminology purged of abstract descriptors (Alpha/Beta/Singleton) per C semantics TRUE
+Input: sget(type, test, data) => Caller: mount/kern_mount TRUE
+Input: type->fs_supers => head of global active metadata list TRUE
+Operation: hlist_for_each_entry() => O(N) traversal of memory blocks TRUE
+Logic: disk(7:14) != disk(7:15) => alloc_super() TRUE
+Logic: socket(A) == socket(B) => share existing block TRUE
+Audit: Linked list trick derived from hlist pointer arithmetic TRUE

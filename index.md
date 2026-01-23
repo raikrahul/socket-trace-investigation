@@ -14,6 +14,12 @@ A deep dive into the `socket()` system call, featuring:
 *   Axiomatic derivation from counting to kernel
 *   All data structures explained
 *   60-step function trace
+*   [Axiomatic Detail: Tick 0 & 1 (Compiler, Linker, Boot)](./tick0_tick1_axiomatic.html)
+*   [Professional Proof: Split-Panel View (Tick 0 & 1)](./tick0_tick1_split.html)
+*   [The Complete Socket Journey (Compile -> Boot -> Tick 1)](./socket_journey.html)
+*   [What Happens When You Write socket()?](./socket_explained.html)
+*   **[Socket Theory: Axiomatic Derivation](./socket_theory.html)** | **[Socket Proof: Real Kernel Data](./socket_proof.html)**
+*   **[The Complete Book (Side-by-Side)](./socket_book.html)** - Click sections to expand
 
 ### [Part 2: The Proof (Live Kernel Evidence)](./part2.html)
 Live forensic evidence proving socket() creates linked structures:

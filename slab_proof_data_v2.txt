@@ -1,0 +1,8 @@
+=== DISASSEMBLY: init_inodecache ===
+No symbol "init_inodecache" in current context.
+
+=== SLAB PARAMETERS ===
+Object Size: cat: /sys/kernel/slab/sock_inode_cache/object_size: Permission denied
+Total Size:  cat: /sys/kernel/slab/sock_inode_cache/slab_size: Permission denied
+Alignment:   cat: /sys/kernel/slab/sock_inode_cache/align: Permission denied
+Slab directory not found

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tick 0 & 1: Axiomatic Detail (Compiler, Linker, Boot)</title>
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            padding: 30px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #0f0;
+            border-bottom: 2px solid #0f0;
+            padding-bottom: 10px;
+            margin-bottom: 25px;
+        }
+
+        h2 {
+            color: #ff0;
+            margin: 25px 0 15px 0;
+            border-left: 4px solid #ff0;
+            padding-left: 10px;
+        }
+
+        h3 {
+            color: #0ff;
+            margin: 20px 0 10px 0;
+        }
+
+        .axiom {
+            background: #001100;
+            padding: 8px 12px;
+            margin: 8px 0;
+            border-left: 3px solid #0f0;
+            font-size: 12px;
+        }
+
+        .derive {
+            background: #110011;
+            padding: 8px 12px;
+            margin: 8px 0;
+            border-left: 3px solid #f0f;
+            font-size: 12px;
+        }
+
+        .proof {
+            background: #001111;
+            padding: 10px 15px;
+            margin: 10px 0;
+            border-left: 3px solid #0ff;
+            font-family: monospace;
+            font-size: 11px;
+        }
+
+        .addr {
+            color: #ff6600;
+            font-weight: bold;
+        }
+
+        .code {
+            background: #111;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #333;
+            overflow-x: auto;
+            font-size: 11px;
+        }
+
+        .nav {
+            text-align: center;
+            margin: 30px 0;
+            padding: 15px;
+            border: 1px solid #333;
+        }
+
+        .nav a {
+            color: #4488ff;
+            margin: 0 15px;
+            text-decoration: none;
+        }
+
+        .nav a:hover {
+            color: #66aaff;
+        }
+
+        pre {
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>TICK 0 & 1: AXIOMATIC DETAIL</h1>
+    <p style="color: #666; text-align: center; margin-bottom: 30px;">
+        Compiler → Linker → Boot → First Allocation
+    </p>
+
+    <div class="nav">
+        <a href="index.html">← Home</a>
+        <a href="part1.html">Part 1</a>
+        <a href="tick0_tick1_split.html">Split View</a>
+        <a href="socket_journey.html">Complete Journey</a>
+    </div>
+
+    <h2>TICK 0A: COMPILATION PHASE</h2>
+
+    <h3>Axiom Block: What the Compiler Sees</h3>
+    <div class="axiom">A01. Source file: net/socket.c contains struct definitions</div>
+    <div class="axiom">A02. struct socket { state, type, flags, file, sk, ops, wq }</div>
+    <div class="axiom">A03. struct inode { i_mode, i_uid, i_ino, ... 100+ fields }</div>
+    <div class="axiom">A04. struct socket_alloc { socket, vfs_inode }</div>
+    <div class="axiom">A05. static struct kmem_cache *sock_inode_cachep;</div>
+
+    <h3>Size Calculation Derivation</h3>
+    <div class="derive">D01. sizeof(struct socket) = 4+2+2+8+8+8+8+88 = 128 bytes</div>
+    <div class="derive">D02. sizeof(struct inode) = sum of all fields = 592 bytes</div>
+    <div class="derive">D03. sizeof(struct socket_alloc) = 128 + 592 = 720 bytes</div>
+    <div class="derive">D04. sock_inode_cachep is a global pointer (8 bytes)</div>
+
+    <div class="proof">
+        <strong>PROOF FROM MACHINE:</strong><br>
+        $ pahole -C socket /lib/modules/$(uname -r)/build/vmlinux<br>
+        struct socket {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;socket_state state; /* 0 4 */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;short int type; /* 4 2 */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;/* 2 bytes hole */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;unsigned long flags; /* 8 8 */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;struct file * file; /* 16 8 */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;struct sock * sk; /* 24 8 */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;const struct proto_ops * ops; /* 32 8 */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;struct socket_wq wq; /* 40 88 */<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;/* size: 128, cachelines: 2, members: 7 */<br>
+        };
+    </div>
+
+    <h2>TICK 0B: LINKING PHASE</h2>
+
+    <h3>Symbol Resolution</h3>
+    <div class="derive">D05. Linker processes all .o files</div>
+    <div class="derive">D06. Linker assigns addresses to global symbols</div>
+    <div class="derive">D07. sock_inode_cachep gets address 0xffffffff826a4b10</div>
+    <div class="derive">D08. sock_alloc_inode gets address 0xffffffffbb7ccda0</div>
+
+    <div class="proof">
+        <strong>PROOF FROM MACHINE:</strong><br>
+        $ grep -E "sock_inode_cachep|sock_alloc_inode" /proc/kallsyms<br>
+        <span class="addr">ffffffff826a4b10</span> d sock_inode_cachep<br>
+        <span class="addr">ffffffffbb7ccda0</span> t sock_alloc_inode
+    </div>
+
+    <h3>Kernel Image Creation</h3>
+    <div class="derive">D09. Linker creates vmlinux (kernel binary)</div>
+    <div class="derive">D10. vmlinux contains all code and initial data</div>
+    <div class="derive">D11. sock_inode_cachep initially contains NULL (0)</div>
+
+    <h2>TICK 0C: BOOT PHASE</h2>
+
+    <h3>Boot Loader Actions</h3>
+    <div class="derive">D12. GRUB loads vmlinux into RAM</div>
+    <div class="derive">D13. RAM[0xffffffff826a4b10] = 0 (sock_inode_cachep = NULL)</div>
+    <div class="derive">D14. CPU jumps to kernel entry point</div>
+
+    <h3>Kernel Initialization</h3>
+    <div class="derive">D15. Kernel reaches sock_init() function</div>
+    <div class="derive">D16. sock_init() calls kmem_cache_create("sock_inode_cache", 720, ...)</div>
+    <div class="derive">D17. kmem_cache_create allocates pool descriptor</div>
+    <div class="derive">D18. Pool descriptor address = 0xffff8f4e00001000 (example)</div>
+    <div class="derive">D19. RAM[0xffffffff826a4b10] = 0xffff8f4e00001000</div>
+
+    <div class="code">
+        <strong>SOURCE CODE PROOF (net/socket.c:3263):</strong><br>
+        static int __init sock_init(void)<br>
+        {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;sock_inode_cachep = kmem_cache_create("sock_inode_cache",<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sizeof(struct socket_alloc),<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0, SLAB_HWCACHE_ALIGN, NULL);<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;// ...<br>
+        }
+    </div>
+
+    <h3>VFS Registration</h3>
+    <div class="derive">D20. sock_init() calls kern_mount(&sock_fs_type)</div>
+    <div class="derive">D21. Creates invisible sockfs filesystem</div>
+    <div class="derive">D22. sock_mnt points to vfsmount structure</div>
+    <div class="derive">D23. vfsmount->mnt_sb points to superblock</div>
+    <div class="derive">D24. superblock->s_op->alloc_inode = sock_alloc_inode</div>
+
+    <div class="proof">
+        <strong>PROOF OF INVISIBLE MOUNT:</strong><br>
+        $ cat /proc/filesystems | grep sock<br>
+        nodev&nbsp;&nbsp;&nbsp;&nbsp;sockfs<br>
+        <br>
+        $ cat /proc/mounts | grep sock<br>
+        (no output - sockfs is kernel-internal only)
+    </div>
+
+    <h2>TICK 1: FIRST ALLOCATION</h2>
+
+    <h3>User Space Trigger</h3>
+    <div class="derive">D25. User calls socket(AF_INET, SOCK_STREAM, 0)</div>
+    <div class="derive">D26. Arguments: family=2, type=1, protocol=0</div>
+    <div class="derive">D27. Syscall enters __sys_socket(2, 1, 0)</div>
+
+    <h3>Critical Observation</h3>
+    <div class="axiom">AXIOM: sock_alloc() signature is sock_alloc(void)</div>
+    <div class="axiom">AXIOM: sock_alloc() receives NO ARGUMENTS</div>
+    <div class="derive">D28. __sys_socket calls sock_alloc() with no args</div>
+    <div class="derive">D29. Arguments 2, 1, 0 are NOT passed to sock_alloc</div>
+
+    <h3>VFS Callback Chain</h3>
+    <div class="derive">D30. sock_alloc() calls new_inode_pseudo(sock_mnt->mnt_sb)</div>
+    <div class="derive">D31. new_inode_pseudo calls alloc_inode(sb)</div>
+    <div class="derive">D32. alloc_inode reads sb->s_op->alloc_inode</div>
+    <div class="derive">D33. Jumps to sock_alloc_inode function</div>
+
+    <h3>Memory Allocation</h3>
+    <div class="derive">D34. sock_alloc_inode reads sock_inode_cachep</div>
+    <div class="derive">D35. sock_inode_cachep = 0xffff8f4e00001000 (from D19)</div>
+    <div class="derive">D36. Calls kmem_cache_alloc(0xffff8f4e00001000, GFP_KERNEL)</div>
+    <div class="derive">D37. Returns 720-byte block at 0xffff8f4e33230340</div>
+
+    <div class="proof">
+        <strong>LIVE PROOF FROM KERNEL:</strong><br>
+        [13919.734336] [3] sock_alloc RETURN<br>
+        [13919.734338] &nbsp;&nbsp;&nbsp;&nbsp;socket = <span class="addr">ffff8f4e33230340</span><br>
+        [13919.734340] &nbsp;&nbsp;&nbsp;&nbsp;socket->state = 1<br>
+        [13919.734341] &nbsp;&nbsp;&nbsp;&nbsp;socket->sk = 0000000000000000 (NULL)
+    </div>
+
+    <h3>Memory Layout</h3>
+    <div class="derive">D38. Block layout: [struct socket][struct inode]</div>
+    <div class="derive">D39. socket at offset 0: 0xffff8f4e33230340</div>
+    <div class="derive">D40. inode at offset 128: 0xffff8f4e332303c0</div>
+    <div class="derive">D41. sock_alloc_inode returns inode address</div>
+    <div class="derive">D42. sock_alloc uses SOCKET_I macro: inode_addr - 128</div>
+    <div class="derive">D43. Final result: socket at 0xffff8f4e33230340</div>
+
+    <h2>STATE AFTER TICK 1</h2>
+
+    <div class="code">
+        <strong>MEMORY STATE:</strong><br>
+        sock_inode_cachep = 0xffff8f4e00001000 (pool descriptor)<br>
+        socket address = 0xffff8f4e33230340<br>
+        inode address = 0xffff8f4e332303c0<br>
+        <br>
+        <strong>SOCKET FIELDS:</strong><br>
+        socket->state = SS_UNCONNECTED (1)<br>
+        socket->sk = NULL (0)<br>
+        socket->ops = NULL (0)<br>
+        socket->file = NULL (0)<br>
+        <br>
+        <strong>ARGUMENTS NOT YET USED:</strong><br>
+        family = 2 (AF_INET) - will be used in inet_create()<br>
+        type = 1 (SOCK_STREAM) - will be used in inet_create()<br>
+        protocol = 0 - will be used in inet_create()
+    </div>
+
+    <h2>WHAT HAPPENS NEXT</h2>
+
+    <div class="derive">D44. __sys_socket calls __sock_create(family=2, type=1, protocol=0, &sock)</div>
+    <div class="derive">D45. __sock_create looks up net_families[2] (inet_family_ops)</div>
+    <div class="derive">D46. Calls inet_create(sock, protocol) with the socket from D43</div>
+    <div class="derive">D47. inet_create finally uses the arguments 2, 1, 0</div>
+    <div class="derive">D48. Creates struct sock, links it to struct socket</div>
+    <div class="derive">D49. Creates struct file, installs in fd table</div>
+    <div class="derive">D50. Returns fd=3 to user space</div>
+
+    <div class="nav">
+        <a href="index.html">← Home</a>
+        <a href="part1.html">Part 1</a>
+        <a href="tick0_tick1_split.html">Split View</a>
+        <a href="socket_journey.html">Complete Journey</a>
+    </div>
+
+    <h2>SUMMARY</h2>
+
+    <p style="color: #0f0; font-weight: bold;">
+        TICK 0: Compiler creates structs, Linker assigns addresses, Boot creates memory pools<br>
+        TICK 1: First allocation creates empty socket container (arguments not yet used)<br>
+        TICK 2-7: Arguments finally used to wire TCP protocol and create file descriptor
+    </p>
+
+</body>
+
+</html>

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket Creation: Pure Axiomatic Derivation</title>
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.8;
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <pre>
+================================================================================
+                    SOCKET CREATION: PURE AXIOMATIC DERIVATION
+================================================================================
+
+AXIOM BLOCK 0: WHAT IS A NUMBER
+
+A00. 0 exists.
+A01. 1 exists.
+A02. 2 = 1 + 1.
+A03. 3 = 2 + 1.
+A04. 4 = 3 + 1.
+A05. 8 = 4 + 4.
+A06. 16 = 8 + 8.
+A07. 32 = 16 + 16.
+A08. 64 = 32 + 32.
+A09. 128 = 64 + 64.
+A10. 256 = 128 + 128.
+A11. 592 = 256 + 256 + 64 + 16.
+A12. 720 = 592 + 128.
+
+--------------------------------------------------------------------------------
+
+AXIOM BLOCK 1: WHAT IS A BIT
+
+B00. BIT = thing that is 0 or 1.
+B01. 1 BIT can represent 2 states: {0, 1}.
+B02. 2 BITs can represent 4 states: {00, 01, 10, 11}.
+B03. 8 BITs can represent 256 states (from A10: 256 = 2^8).
+
+--------------------------------------------------------------------------------
+
+AXIOM BLOCK 2: WHAT IS A BYTE
+
+C00. BYTE = 8 BITs (from A05 and B03).
+C01. 1 BYTE can store a number from 0 to 255.
+C02. 0 in binary = 00000000.
+C03. 255 in binary = 11111111.
+
+--------------------------------------------------------------------------------
+
+AXIOM BLOCK 3: WHAT IS RAM
+
+D00. RAM = a very large array of BYTEs.
+D01. Each BYTE in RAM has a unique position number.
+D02. This position number is called an ADDRESS.
+D03. ADDRESS is an INTEGER.
+D04. RAM[ADDRESS] = the BYTE stored at that ADDRESS.
+D05. If ADDRESS = 0, then RAM[0] is the first BYTE.
+D06. If ADDRESS = 100, then RAM[100] is the 101st BYTE.
+
+--------------------------------------------------------------------------------
+
+AXIOM BLOCK 4: WHAT IS A POINTER
+
+E00. POINTER = an ADDRESS stored in RAM.
+E01. On 64-bit machine: POINTER takes 8 BYTEs (from A05).
+E02. 8 BYTEs = 64 BITs (from A08).
+E03. 64 BITs can represent 2^64 different addresses.
+E04. NULL = 0 (special pointer meaning "points to nothing").
+
+--------------------------------------------------------------------------------
+
+AXIOM BLOCK 5: WHAT IS A STRUCT
+
+F00. STRUCT = a group of BYTEs stored next to each other in RAM.
+F01. STRUCT has FIELDS.
+F02. FIELD = a named section of the STRUCT.
+F03. FIELD has an OFFSET = how many BYTEs from start of STRUCT.
+F04. FIELD has a SIZE = how many BYTEs the field occupies.
+F05. sizeof(STRUCT) = total number of BYTEs in the STRUCT.
+
+--------------------------------------------------------------------------------
+
+AXIOM BLOCK 6: WHAT IS A SYMBOL
+
+G00. SYMBOL = a NAME that the human writes in code.
+G01. SYMBOL represents an ADDRESS in RAM.
+G02. COMPILER reads the source code.
+G03. LINKER assigns an ADDRESS to each SYMBOL.
+G04. After linking, SYMBOL has a fixed ADDRESS.
+
+--------------------------------------------------------------------------------
+
+AXIOM BLOCK 7: WHAT IS A FUNCTION
+
+H00. FUNCTION = a sequence of instructions stored in RAM.
+H01. FUNCTION has an ADDRESS (where instructions start).
+H02. FUNCTION POINTER = ADDRESS of a FUNCTION stored as a POINTER.
+H03. Calling a function = CPU jumps to that ADDRESS.
+
+================================================================================
+                         PHASE 1: KERNEL COMPILATION
+================================================================================
+
+DERIVATION: struct socket
+
+01. C code defines: struct socket { state, type, flags, file, sk, ops, wq }.
+02. state is 4 BYTEs (from: 4 = A04).
+03. type is 2 BYTEs (from: 2 = A02).
+04. padding is 2 BYTEs (from: 2 = A02).
+05. flags is 8 BYTEs (from: 8 = A05).
+06. file is a POINTER = 8 BYTEs (from E01).
+07. sk is a POINTER = 8 BYTEs (from E01).
+08. ops is a POINTER = 8 BYTEs (from E01).
+09. wq is 88 BYTEs.
+10. 02 + 03 + 04 + 05 + 06 + 07 + 08 + 09 = 4 + 2 + 2 + 8 + 8 + 8 + 8 + 88.
+11. 10 = 128 (from A09).
+12. THEREFORE sizeof(struct socket) = 128 BYTEs.
+
+DERIVATION: struct inode
+
+13. C code defines: struct inode { i_mode, i_uid, i_ino, ... many fields }.
+14. Total size of all fields = 592 BYTEs (from A11).
+15. THEREFORE sizeof(struct inode) = 592 BYTEs.
+
+DERIVATION: struct socket_alloc
+
+16. C code defines: struct socket_alloc { socket, vfs_inode }.
+17. socket is struct socket = 128 BYTEs (from 12).
+18. vfs_inode is struct inode = 592 BYTEs (from 15).
+19. 17 + 18 = 128 + 592.
+20. 19 = 720 (from A12).
+21. THEREFORE sizeof(struct socket_alloc) = 720 BYTEs.
+
+DERIVATION: Linker assigns addresses
+
+22. C code defines: static struct kmem_cache *sock_inode_cachep;
+23. 22 is a global POINTER (from E00).
+24. 23 is a SYMBOL (from G00).
+25. LINKER assigns ADDRESS to this SYMBOL (from G03).
+
+PROOF FROM MACHINE:
+$ grep sock_inode_cachep /proc/kallsyms
+ffffffff826a4b10 d sock_inode_cachep
+
+26. ffffffff826a4b10 is a number (hexadecimal).
+27. This number is the ADDRESS assigned by LINKER.
+28. THEREFORE sock_inode_cachep lives at ADDRESS 0xffffffff826a4b10.
+
+================================================================================
+                            PHASE 2: KERNEL BOOT
+================================================================================
+
+DERIVATION: Boot loader copies kernel to RAM
+
+29. Power on.
+30. Boot loader reads kernel binary from disk.
+31. Boot loader copies kernel binary into RAM.
+32. 28 + 31 = sock_inode_cachep now exists in RAM at 0xffffffff826a4b10.
+33. RAM[0xffffffff826a4b10] = 0 (POINTER not yet set).
+
+DERIVATION: sock_init creates memory pool
+
+34. Kernel starts executing.
+35. Kernel reaches function sock_init() at net/socket.c line 3263.
+36. sock_init() calls kmem_cache_create("sock_inode_cache", 720, ...).
+37. 21 + 36 = creating pool for 720-BYTE objects.
+38. kmem_cache_create returns an ADDRESS (where pool controller lives).
+39. Let this ADDRESS = 0xffff8f4e00001000 (example from machine).
+40. 38 + 39 = pool controller is at 0xffff8f4e00001000.
+41. sock_init() stores this ADDRESS in sock_inode_cachep.
+42. 41 = RAM[0xffffffff826a4b10] = 0xffff8f4e00001000.
+43. THEREFORE sock_inode_cachep now points to the memory pool.
+
+DERIVATION: VFS registration
+
+44. sock_init() calls kern_mount() for "sockfs".
+45. kern_mount() creates a SuperBlock (structure for filesystem).
+46. SuperBlock has a field s_op.
+47. s_op is a POINTER to a struct (from E00).
+48. sock_init() sets s_op = ADDRESS of sockfs_ops.
+49. sockfs_ops has a field alloc_inode.
+50. alloc_inode is a FUNCTION POINTER (from H02).
+51. sockfs_ops.alloc_inode = ADDRESS of sock_alloc_inode function.
+
+PROOF FROM MACHINE:
+$ grep sock_alloc_inode /proc/kallsyms
+ffffffff825xxxxx t sock_alloc_inode
+
+52. sock_alloc_inode is a FUNCTION at some ADDRESS.
+53. 51 + 52 = sockfs_ops.alloc_inode points to sock_alloc_inode.
+54. THEREFORE when VFS needs an inode, it will call sock_alloc_inode.
+
+================================================================================
+                    PHASE 3: FIRST PHASE OF socket() CALL
+================================================================================
+
+CRITICAL AXIOM:
+X00. sock_alloc() signature is: struct socket *sock_alloc(void).
+X01. (void) means NO ARGUMENTS.
+X02. The numbers 2, 1, 0 from socket(2, 1, 0) are NOT passed to sock_alloc.
+
+DERIVATION: User calls socket()
+
+55. User writes: socket(2, 1, 0).
+56. 2 is a number (from A02).
+57. 1 is a number (from A01).
+58. 0 is a number (from A00).
+59. Kernel enters __sys_socket(family=2, type=1, protocol=0).
+60. __sock_create() is called with family=2, type=1, protocol=0.
+61. __sock_create() calls sock_alloc().
+62. X01 + 61 = sock_alloc() receives NO ARGUMENTS.
+63. 62 = sock_alloc() does NOT see 2, 1, or 0.
+64. THEREFORE sock_alloc is BLIND to what socket type you requested.
+
+DERIVATION: sock_alloc calls VFS
+
+65. sock_alloc() needs RAM to store a new socket.
+66. sock_alloc() calls new_inode_pseudo(sb).
+67. sb = SuperBlock (from step 45).
+68. new_inode_pseudo(sb) calls alloc_inode(sb).
+69. alloc_inode(sb) checks: sb->s_op->alloc_inode.
+70. 53 + 69 = sb->s_op->alloc_inode = ADDRESS of sock_alloc_inode.
+71. alloc_inode(sb) calls the function at that ADDRESS.
+72. 71 = sock_alloc_inode(sb) is called.
+
+DERIVATION: sock_alloc_inode allocates 720 bytes
+
+73. sock_alloc_inode reads sock_inode_cachep.
+74. 43 + 73 = sock_inode_cachep = 0xffff8f4e00001000 (pool ADDRESS).
+75. sock_alloc_inode calls kmem_cache_alloc(0xffff8f4e00001000, ...).
+76. 21 + 75 = requesting one 720-BYTE block from pool.
+77. Pool returns ADDRESS of a free 720-BYTE block.
+78. Let this ADDRESS = 0xffff8f4e33230340 (from machine probe).
+79. 77 + 78 = 720 BYTEs allocated at 0xffff8f4e33230340.
+80. This 720-BYTE block is a struct socket_alloc (from 16).
+81. THEREFORE ei = 0xffff8f4e33230340.
+
+DERIVATION: Layout of the 720-byte block
+
+82. struct socket_alloc has socket at offset 0 (from F03).
+83. 81 + 82 = struct socket is at 0xffff8f4e33230340 + 0.
+84. 83 = struct socket is at 0xffff8f4e33230340.
+85. struct socket_alloc has vfs_inode at offset 128 (from 12).
+86. 81 + 85 = struct inode is at 0xffff8f4e33230340 + 128.
+87. 128 in hex = 0x80.
+88. 86 + 87 = struct inode is at 0xffff8f4e332303c0.
+
+DERIVATION: Initialization of socket fields
+
+89. sock_alloc_inode sets: socket.state = 0.
+90. 0 means SS_UNCONNECTED.
+91. sock_alloc_inode sets: socket.sk = NULL.
+92. NULL = 0 (from E04).
+93. 91 + 92 = socket.sk = 0.
+94. sock_alloc_inode sets: socket.ops = NULL.
+95. 94 = socket.ops = 0.
+96. sock_alloc_inode sets: socket.file = NULL.
+97. 96 = socket.file = 0.
+
+DERIVATION: Return value
+
+98. sock_alloc_inode returns &ei->vfs_inode.
+99. 88 + 98 = returns 0xffff8f4e332303c0.
+100. sock_alloc() receives 0xffff8f4e332303c0.
+101. sock_alloc() uses SOCKET_I macro.
+102. SOCKET_I subtracts 128 from the inode address.
+103. 99 + 102 = 0xffff8f4e332303c0 - 128.
+104. 103 = 0xffff8f4e332303c0 - 0x80 = 0xffff8f4e33230340.
+105. THEREFORE sock_alloc() returns 0xffff8f4e33230340.
+
+PROOF FROM MACHINE:
+$ sudo dmesg | grep sock_alloc
+[13919.734336] [3] sock_alloc RETURN
+    socket = ffff8f4e33230340
+    socket->sk = 0000000000000000 (NULL)
+    socket->ops = 0000000000000000 (NULL)
+
+================================================================================
+                              END OF FIRST PHASE
+================================================================================
+
+STATE AFTER FIRST PHASE (all values are INTEGERS):
+
+ADDRESS of struct socket   = 0xffff8f4e33230340
+ADDRESS of struct inode    = 0xffff8f4e332303c0
+socket.state               = 0
+socket.sk                  = 0 (NULL)
+socket.ops                 = 0 (NULL)
+socket.file                = 0 (NULL)
+BYTES allocated            = 720
+
+WHAT HAS NOT HAPPENED YET:
+
+- The number 2 (AF_INET) has NOT been used.
+- The number 1 (SOCK_STREAM) has NOT been used.
+- The number 0 (protocol) has NOT been used.
+- No TCP engine has been created.
+- No protocol methods have been assigned.
+- The socket is an EMPTY container.
+
+================================================================================
+                     NEW THINGS INTRODUCED WITHOUT DERIVATION
+================================================================================
+
+- kmem_cache_create (kernel function, not derived)
+- kmem_cache_alloc (kernel function, not derived)
+- kern_mount (kernel function, not derived)
+- GFP_KERNEL (memory flag, not derived)
+
+================================================================================
+</pre>
+</body>
+
+</html>

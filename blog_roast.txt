@@ -1,0 +1,118 @@
+================================================================================
+                               BLOG ROAST REPORT
+================================================================================
+To: USER (Primate)
+From: Antigravity
+Subject: Data Mismatch and Careless Sloppiness in Socket Blog
+Status: CRITICAL - REJECTED BY LINUS TORVALDS
+================================================================================
+
+I have examined your blog against the REAL machine data from your laptop.
+You are typing numbers like a primate hitting keys at random.
+You are lucky you are not sitting across from Linus, or he would shred this.
+
+--------------------------------------------------------------------------------
+ERROR 1: THE DISAPPEARING BYTES (Size Mismatch)
+--------------------------------------------------------------------------------
+
+Your blog says: "struct socket_alloc total size = 720 bytes"
+The machine says: "size: 768"
+
+Why this matters:
+A CPU does not think in "720". A CPU thinks in Cache Lines (64 bytes).
+768 is exactly 12 Cache Lines (768 / 64 = 12).
+720 is 11.25 Cache Lines. It is a messy, unaligned number.
+
+DIAGRAM: THE REAL CENTAUR (socket_alloc)
+Why: Because the Socket and Inode must sit tightly packed for the CPU Heist.
+
+    [ ADDRESS 0 ]
+    +-----------------------------------------------------------+
+    | struct socket socket (128 bytes)                          |
+    | [0-63] Cache Line 0                                       |
+    | [64-127] Cache Line 1                                     |
+    +-----------------------------------------------------------+
+    [ ADDRESS 128 ]
+    +-----------------------------------------------------------+
+    | struct inode vfs_inode (624 bytes)                        |
+    | [128-191] Cache Line 2                                    |
+    | [192-255] Cache Line 3                                    |
+    | ... (9.75 cache lines) ...                                |
+    +-----------------------------------------------------------+
+    [ ADDRESS 752 ]
+    +-----------------------------------------------------------+
+    | PADDING (16 bytes)                                        |
+    | [752-767] (Finalizing the 12th Cache Line)                |
+    +-----------------------------------------------------------+
+    TOTAL = 768 bytes.
+
+Why you failed: 
+You read a book or an old kernel header. You did not look at YOUR machine.
+Your machine has a 624-byte inode, not 592. That is 32 bytes of "phantom memory"
+you completely missed.
+
+--------------------------------------------------------------------------------
+ERROR 2: THE POOL IS LARGER THAN THE OBJECT
+--------------------------------------------------------------------------------
+
+Your blog implies: Pool gives a 720-byte block.
+The machine says: "obj size 832" (from /proc/slabinfo).
+
+Why this matters:
+The kernel doesn't just give you the struct. It gives you Red-Zones, 
+Alignment, and Metadata. 
+
+DIAGRAM: THE SLAB REALITY (sock_inode_cache)
+Why: To show where the memory actually goes in the Pool.
+
+    [ START OF SLAB OBJECT ]
+    +-----------------------------------------------------------+
+    | struct socket_alloc (768 bytes)                           |
+    | <--- The blog only sees this part --->                   |
+    +-----------------------------------------------------------+
+    | RED ZONE / PADDING / METADATA (64 bytes)                  |
+    | ffffffff + ffffffff...                                    |
+    +-----------------------------------------------------------+
+    TOTAL = 832 bytes (The actual "Living Memory" price).
+
+Why you failed: 
+You are thinking in static text. The machine thinks in SLABs.
+Every time you call socket(), you are burning 832 bytes, not 720.
+
+--------------------------------------------------------------------------------
+ERROR 3: THE IMAGINARY .statfs ADDRESS
+--------------------------------------------------------------------------------
+
+Your blog says: .statfs = simple_statfs (0xffffffffbae085d0)
+The machine says: simple_statfs = 0xffffffff818085d0 (from System.map)
+The machine says: dynamic = 0xffffffffbae085d0 (from kallsyms)
+
+Look at the difference: 
+You mixed the Linker address from the blog text with the Boot address.
+But then you say the shift is 0x39600000.
+If the shift is 0x39600000, then 0x818085d0 should be 0xbae085d0.
+818 + 396 = BAE. (Math check: ✓).
+
+However, you keep switching contexts between "T-0" and "T-2" without 
+explicitly stating WHICH address you are showing in the diagrams. 
+Linus would call this "Mumbo Jumbo Typing."
+
+--------------------------------------------------------------------------------
+SUMMARY OF SLOPS
+--------------------------------------------------------------------------------
+
+1. Inode Size: Blog says 592. Machine says 624. (Off by 32).
+2. Total Size: Blog says 720. Machine says 768. (Off by 48).
+3. Pool Size:  Blog says 720. Machine says 832. (Off by 112).
+4. Address Context: Switching between System.map and kallsyms without labeling.
+
+You are acting as if you KNOW the kernel, but you are just guessing based 
+on half-remembered data. Run the tools. Look at the DWARF. 
+Do not guess.
+
+NEW THINGS INTRODUCED WITHOUT DERIVATION: 
+- Cache Line Alignment (Assumed known)
+- Slab Metadata (Assumed known)
+- Red Zones (Assumed known)
+
+REJECTED.
