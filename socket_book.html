@@ -3,30 +3,17 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>The Physical Layout of socket() in Linux: Analytical & Forensic Edition</title>
-
-  <!-- Highlight.js CSS (GitHub Dark Theme) -->
+  <title>socket() Physical Implementation - Linux 6.14</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
-
   <style>
-    :root {
-      --bg-color: #fff;
-      --text-color: #000;
-      --accent-color: #c00;
-      --border-color: #e0e0e0;
-      --font-main: 'Charter', 'Georgia', serif;
-      --font-header: 'Helvetica Neue', sans-serif;
-      --font-mono: 'SF Mono', 'Consolas', monospace;
-    }
-
     * {
       box-sizing: border-box;
     }
 
     body {
       background: #fff;
-      color: var(--text-color);
-      font-family: var(--font-mono);
+      color: #000;
+      font-family: 'SF Mono', 'Consolas', monospace;
       margin: 0;
       padding: 0;
       overflow: hidden;
@@ -39,40 +26,21 @@
       overflow: hidden;
     }
 
-    .academic-pane {
+    .left-pane,
+    .right-pane {
       flex: 1;
       padding: 40px;
-      border-right: 1px solid #000;
       overflow: auto;
     }
 
-    .forensic-pane {
-      flex: 1;
-      padding: 40px;
-      overflow: auto;
+    .left-pane {
+      border-right: 1px solid #000;
     }
 
     pre {
       white-space: pre-wrap;
-      font-family: var(--font-mono);
+      font-family: 'SF Mono', 'Consolas', monospace;
       line-height: 1.4;
-      border: none;
-      background: transparent;
-      padding: 0;
-      margin: 0;
-    }
-
-    .addr {
-      color: #000;
-      font-weight: 600;
-    }
-
-    .forensic-pane .addr {
-      color: #1f6feb;
-    }
-
-    /* HIGHLIGHT.JS INTEGRATION */
-    pre {
       margin: 0;
       padding: 10px;
       background: #282c34;
@@ -81,11 +49,16 @@
     }
 
     code {
-      font-family: var(--font-mono);
+      font-family: 'SF Mono', 'Consolas', monospace;
       display: block;
       padding: 0;
       background: transparent;
       color: #abb2bf;
+    }
+
+    .addr {
+      color: #1f6feb;
+      font-weight: 600;
     }
   </style>
 </head>
@@ -94,451 +67,256 @@
 
   <div class="master-container">
 
-    <!-- LEFT SIDE: ANALYTICAL RESEARCH PAPER (THEORY) -->
-    <div class="academic-pane">
+    <div class="left-pane">
       <pre><code class="language-c">
-WHAT HAPPENS WHEN YOU CALL socket(2)
+SOCKET() IMPLEMENTATION - LINUX 6.14.0-37-GENERIC
 ======================================================================
 
-Execution of socket() retrieves a 768-byte object from a specific Slab cache. It uses RIP-relative addressing to locate kernel globals and overwrites user registers to setup internal function calls.
+KERNEL: Linux 6.14.0-37-generic (x86_64)
+COMPILER: gcc-13.3.0
+LINKER: GNU ld 2.42
+ABI: System V AMD64
 
 ======================================================================
-AXIOM 0: C STRUCTURES, POINTERS, AND FUNCTION POINTERS
+STRUCTURES
 ======================================================================
 
-STRUCTURES (group related data):
-  struct name {
-      type field1;         /* offset in bytes, size in bytes */
-      type field2;
-  };
+struct file_system_type {
+    const char *name;                              /*  0    8 */
+    int fs_flags;                                  /*  8    4 */
+    int (*init_fs_context)(struct fs_context *);  /* 16    8 */
+    const struct fs_parameter_spec *parameters;   /* 24    8 */
+    struct dentry *(*mount)(...);                 /* 32    8 */
+    void (*kill_sb)(struct super_block *);        /* 40    8 */
+    struct module *owner;                         /* 48    8 */
+    struct file_system_type *next;                /* 56    8 */
+    struct hlist_head fs_supers;                  /* 64   16 */
+};
 
-POINTERS (address of a variable or function):
-  type *ptr;
-  ptr = &variable;        /* & = address-of operator */
-  value = *ptr;           /* * = dereference (load value at address) */
+static struct file_system_type sock_fs_type = {
+    .name             = "sockfs",
+    .init_fs_context  = sockfs_init_fs_context,
+    .kill_sb          = kill_anon_super,
+};
 
-FUNCTION POINTERS (address of executable code):
-  int (*funcptr)(int arg) = &actual_function; /* Holds code address for O(1) indirect jump */
+struct super_operations {
+    struct inode *(*alloc_inode)(struct super_block *sb);
+    void (*destroy_inode)(struct inode *);
+    void (*free_inode)(struct inode *);
+    void (*dirty_inode)(struct inode *, int flags);
+    int (*write_inode)(struct inode *, struct writeback_control *);
+    ...
+};
 
-PROOF OF VFS SCALING (Function Pointers vs. Conditionals):
-01. Real binary code at fs/inode.c:260 implements 'ops->alloc_inode(sb)' as a single indirect jump, bypassing the O(N) cost of checking every filesystem type.
-02. Live kernel data (nm vmlinux) proves 'sockfs_ops' at ffffffff8276e740 wires 'sock_alloc_inode' directly into the superblock's 's_op' handle.
-03. Without this, adding a filesystem (e.g., XFS) would require manual modification of the kernel core to insert 'if (sb->type == XFS)', forcing a maintainability bottleneck.
-04. Pointer-based dispatch allows the kernel to scale to N filesystems (ext4, nfs, btrfs, sockfs) with zero change to the core allocation logic.
-05. Verification: 'cat /proc/filesystems' shows 30+ filesystem types executing through the same function pointer.
+static const struct super_operations sockfs_ops = {
+    .alloc_inode   = sock_alloc_inode,
+    .drop_inode    = generic_drop_inode,
+    .statfs        = sockfs_statfs,
+};
 
-======================================================================
-LAYER 1: KERNEL STRUCTURES (SOURCE CODE)
-======================================================================
+struct socket_alloc {
+    struct socket socket __attribute__((__aligned__(64)));  /*   0   128 */
+    struct inode vfs_inode __attribute__((__aligned__(8))); /* 128   624 */
+    /* size: 768, cachelines: 12, members: 2 */
+};
 
-DERIVATION OF SOURCE IDENTITY:
-01. Origin: Generic structures ('file_system_type') are defined in VFS headers. Specific instances ('sock_fs_type') are defined in net/socket.c.
-02. Syntax Logic: C uses 'structs' containing Function Pointers to allow swappable behavior.
-03. Naming Convention:
-    - 'sock_fs_type': The Definition structure for this filesystem.
-    - 'sockfs_ops': The Operations Table containing function pointers.
-    - 'sockfs_': Prefix prevents symbol collisions in the global link space.
-04. State: At this layer, these are text blueprints. They have no memory address yet.
+struct vfsmount {
+    struct dentry *mnt_root;        /*  0   8 */
+    struct super_block *mnt_sb;     /*  8   8 */
+    int mnt_flags;                  /* 16   4 */
+};
 
-    [Source Code: Text Files]
-    +------------------+       +-------------------+
-    | file_system_type |------>| init_fs_context() |
-    +------------------+       +-------------------+
-             ^                          ^
-             | defines type             | defines behavior
-             |                          |
-        "sockfs" (Name)         sockfs_init_fs_context
-
-  struct file_system_type {
-      const char *name;                              /*  0    8 */
-      int fs_flags;                                  /*  8    4 */
-      int (*init_fs_context)(struct fs_context *);  /* 16    8 */ /* FP1 */
-      const struct fs_parameter_spec *parameters;   /* 24    8 */
-      struct dentry *(*mount)(...);                 /* 32    8 */ /* FP2 */
-      void (*kill_sb)(struct super_block *);        /* 40    8 */ /* FP3 */
-      struct module *owner;                         /* 48    8 */
-      struct file_system_type *next;                /* 56    8 */
-      struct hlist_head fs_supers;                  /* 64   16 */
-  };
-
-
-INSTANTIATION: sock_fs_type (net/socket.c:425)
-
-  static struct file_system_type sock_fs_type = {
-      .name             = "sockfs",
-      .init_fs_context  = sockfs_init_fs_context,   /* FP assignment */
-      .kill_sb          = kill_anon_super,          /* FP assignment */
-  };
-
+struct super_block {
+    struct list_head s_list;                      /*  0  16 */
+    dev_t s_dev;                                  /* 16   4 */
+    ...
+    const struct super_operations *s_op;          /* 48   8 */
+    ...
+};
 
 ======================================================================
-THE OPERATIONS TABLE: super_operations (net/socket.c)
+SOURCE CODE
 ======================================================================
 
-  struct super_operations {
-      struct inode *(*alloc_inode)(struct super_block *sb);  /* FP at offset 0 */
-      void (*destroy_inode)(struct inode *);                 /* FP at offset 8 */
-      void (*free_inode)(struct inode *);
-      void (*dirty_inode)(struct inode *, int flags);
-      int (*write_inode)(struct inode *, struct writeback_control *);
-      ...
-  };
+net/socket.c:411
+static int sockfs_init_fs_context(struct fs_context *fc)
+{
+    struct pseudo_fs_context *ctx = init_pseudo(fc, SOCKFS_MAGIC);
+    if (!ctx)
+        return -ENOMEM;
+    ctx->ops = &sockfs_ops;
+    ctx->dops = &sockfs_dentry_operations;
+    ctx->xattr = sockfs_xattr_handlers;
+    return 0;
+}
 
-  static const struct super_operations sockfs_ops = {
-      .alloc_inode   = sock_alloc_inode,    /* FP assignment */
-      .drop_inode    = generic_drop_inode,  /* FP assignment */
-      .statfs        = sockfs_statfs,       /* FP assignment */
-  };
+net/socket.c:339
+static int init_inodecache(void)
+{
+    sock_inode_cachep = kmem_cache_create(
+        "sock_inode_cache",
+        sizeof(struct socket_alloc),  /* 768 bytes */
+        0,
+        SLAB_HWCACHE_ALIGN | SLAB_RECLAIM_ACCOUNT | SLAB_ACCOUNT,
+        init_once
+    );
+    return sock_inode_cachep ? 0 : -ENOMEM;
+}
 
-======================================================================
-THE FUNCTION: sockfs_init_fs_context (net/socket.c:411)
-======================================================================
-
-  411: static int sockfs_init_fs_context(struct fs_context *fc)
-  412: {
-  413:     struct pseudo_fs_context *ctx = init_pseudo(fc, SOCKFS_MAGIC);
-  414:     if (!ctx)
-  415:         return -ENOMEM;
-  416:     ctx->ops = &sockfs_ops;               /* <-- CRITICAL LINE */
-  417:     ctx->dops = &sockfs_dentry_operations;
-  418:     ctx->xattr = sockfs_xattr_handlers;
-  419:     return 0;
-  420: }
-
-LOCATION IN BINARY: nm vmlinux | grep sockfs_ops
-  ffffffff8276e740 r sockfs_ops     /* r = read-only data section */
-
-FUNCTION POINTER PROVENANCE: alloc_inode
-
-  Who created it: Kernel programmer at net/socket.c
-  What it points to: struct inode *sock_alloc_inode(struct super_block *)
-                     Code address: 0xffffffff821ccda0 (from nm output)
-  Memory validity: sock_alloc_inode is kernel code, address known after linking
-  Who validates it: Linker (ld) during vmlinux creation
-  When valid: After kernel image is linked (before boot)
-
-At runtime, when the kernel needs to allocate an inode for a socket, it will
-follow this chain:
-  1. Load sb->s_op (points to sockfs_ops at 0xffffffff8276e740)
-  2. Load sb->s_op[0] (first entry, alloc_inode pointer)
-  3. Call that function pointer: sock_alloc_inode
+net/socket.c (sock_init)
+static int __init sock_init(void)
+{
+    ...
+    sock_mnt = kern_mount(&sock_fs_type);
+    ...
+}
 
 ======================================================================
-LAYER 2: COMPILATION & LINKING (REAL BINARY PROOFS)
+BOOT INITIALIZATION SEQUENCE
 ======================================================================
 
-The compiler (gcc) converts net/socket.c into socket.o, encoding sock_fs_type.init_fs_context as a relocation placeholder. At link-time, ld resolves the final kernel layout, assigning sockfs_init_fs_context to address ffffffff821cccb0. The linker then patches the binary at ffffffff839c2dc0 (the address of sock_fs_type) with this absolute 64-bit address.
+1. init_inodecache() creates slab cache "sock_inode_cache"
+   - Object size: 768 bytes
+   - Flags: SLAB_HWCACHE_ALIGN (align to 64 bytes)
+   - Constructor: init_once
 
-    [socket.o: Relocatable Object]              [vmlinux: Static Executable]
-    +---------------------------+              +------------------------------+
-    | .text: [Placeholder Code] | --Linker-->  | .text: ffffffff821cccb0      |
-    | .data: [Relocation Entry] |              | .data: Ptr = ffffffff821cccb0|
-    +---------------------------+              +------------------------------+
-                                                              ^
-                                                              |
-    Verification: nm vmlinux confirms symbols are pinned to these specific memory cells.
-    Proof: gdb x/gx 0xffffffff839c2dc0+16 reveals ffffffff821cccb0 is physically written into the binary.
+2. kern_mount(&sock_fs_type) calls:
+   - mount_pseudo()
+   - sockfs_init_fs_context()
+   - Wires sb->s_op = &sockfs_ops
 
-======================================================================
-RIP-RELATIVE ADDRESSING (How Global Data Is Loaded)
-======================================================================
-
-At runtime, the instruction mov 0x18aa3a3(%rip), %rax retrieves the sock_mnt global variable. The CPU adds the sealed 32-bit offset 0x18aa3a3 to the address of the next instruction (0xffffffff821cc3fd). This sum yields 0xffffffff83a767a0, which is the exact address of sock_mnt in the .bss section. Using RIP-relative addressing ensures the kernel can load data in a single 7-byte instruction without needing a larger 12-byte absolute load. The linker computes this offset once during the final binary build based on the distance between the code and data segments. Verification: Disassembly of sock_alloc+6 confirms the machine code matches this distance exactly.
+3. Result: sock_mnt points to vfsmount with:
+   - mnt_sb->s_op = &sockfs_ops
+   - sockfs_ops[0] = sock_alloc_inode
 
 ======================================================================
-PRE-BOOT LINKAGE VERIFICATION (gdb Proof from Disk)
-======================================================================
-Before a single instruction executes, the static binary "vmlinux" already contains the wired connections. We verify this by inspecting the file on disk, which proves the Compiler and Linker did their job.
-
-$ gdb -batch -ex "file vmlinux" \
-  -ex "print 'sock_fs_type'.init_fs_context" \
-  -ex "print 'sockfs_ops'.alloc_inode"
-
-OUTPUT:
-$1 = (int (*)(struct fs_context *)) 0xffffffff821cccb0 <sockfs_init_fs_context>
-$2 = (struct inode *(*)(struct super_block *)) 0xffffffff821ccda0 <sock_alloc_inode>
-
-CERTIFICATION:
-01. 'sock_fs_type' (Filesystem Class) is physically hardwired to 'sockfs_init_fs_context' at offset 16.
-02. 'sockfs_ops' (VTable) is physically hardwired to 'sock_alloc_inode' at offset 0.
-∴ The logic path is statically linked in the ELF binary before execution.
-
-======================================================================
-LAYER 3: BOOT INITIALIZATION
+RUNTIME EXECUTION: sock_alloc()
 ======================================================================
 
-INITIALIZATION 1: Create Slab Cache (init_inodecache)
+Disassembly of sock_alloc (simplified):
 
-  static int init_inodecache(void)
-  {
-      sock_inode_cachep = kmem_cache_create(
-          "sock_inode_cache",
-          sizeof(struct socket_alloc),  /* 768 bytes */
-          ...
-      );
-      return 0;
-  }
+<span class="addr">0xffffffff821cc3f0</span> <+0>:   call   <span class="addr">0xffffffff8133c290</span> <__fentry__>
+<span class="addr">0xffffffff821cc3f5</span> <+5>:   push   %rbp
+<span class="addr">0xffffffff821cc3f6</span> <+6>:   mov    0x18aa3a3(%rip),%rax
+<span class="addr">0xffffffff821cc3fd</span> <+13>:  mov    %rsp,%rbp
+<span class="addr">0xffffffff821cc400</span> <+16>:  push   %r12
+<span class="addr">0xffffffff821cc402</span> <+18>:  push   %rbx
+<span class="addr">0xffffffff821cc403</span> <+19>:  mov    0x8(%rax),%rdi
+<span class="addr">0xffffffff821cc407</span> <+23>:  call   <span class="addr">0xffffffff817f2bf0</span> <new_inode_pseudo>
+<span class="addr">0xffffffff821cc40c</span> <+28>:  test   %rax,%rax
+<span class="addr">0xffffffff821cc40f</span> <+31>:  je     <span class="addr">0xffffffff821cc465</span>
+<span class="addr">0xffffffff821cc411</span> <+33>:  mov    %rax,%rbx
+<span class="addr">0xffffffff821cc414</span> <+36>:  lea    -0x80(%rax),%r12
+<span class="addr">0xffffffff821cc418</span> <+40>:  call   <span class="addr">0xffffffff817edb80</span> <get_next_ino>
+...
+<span class="addr">0xffffffff821cc455</span> <+101>: mov    %r12,%rax
+<span class="addr">0xffffffff821cc458</span> <+104>: pop    %rbx
+<span class="addr">0xffffffff821cc459</span> <+105>: pop    %r12
+<span class="addr">0xffffffff821cc45b</span> <+107>: pop    %rbp
+<span class="addr">0xffffffff821cc45c</span> <+108>: xor    %edx,%edx
+<span class="addr">0xffffffff821cc45e</span> <+110>: xor    %edi,%edi
+<span class="addr">0xffffffff821cc460</span> <+112>: jmp    <span class="addr">0xffffffff824f4af0</span>
 
-THE SLUB CONFIGURATION:
-The kernel is configured with CONFIG_SLUB=y (verified via /boot/config).
-SLUB avoids queue overhead by using page-based freelists.
-net/socket.c line 339 invokes this allocator for "sock_inode_cache".
+INSTRUCTION BREAKDOWN:
 
-    [Slab Page: 4096 Bytes]
-    +-----------------------------------------------------------------------+
-    | [Socket+Inode] | [Socket+Inode] | ... (39 objs) ... | [Metadata (64B)]|
-    +-----------------------------------------------------------------------+
-    |<-  768 Bytes ->|
++6:  mov 0x18aa3a3(%rip), %rax
+     RIP = 0xffffffff821cc3fd (next instruction)
+     RIP + 0x18aa3a3 = 0xffffffff83a767a0
+     rax = [0xffffffff83a767a0] = sock_mnt
 
-DERIVATION OF O(1) ALLOCATION (The SLUB Mechanism):
-01. State: The kernel maintains a 'freelist' pointer in a high-speed per-CPU register.
-02. Input: The freelist pointer holds the address of the first available 832-byte block.
-03. Action: sock_alloc_inode() reads this address (e.g., 0xffff888100203000).
-04. Update: The 'next' pointer (stored in the external 64-byte zone) becomes the new freelist head.
-05. Cost: One Memory Read + One Memory Write.
-06. Result: Zero search loops. Constant time execution.
++19: mov 0x8(%rax), %rdi
+     rdi = [rax + 8] = vfsmount.mnt_sb
 
-DERIVATION OF THE 832-BYTE GEOMETRY (Exact Source Derivation):
-01. Source: net/socket.c:339 calls kmem_cache_create with sizeof(struct socket_alloc) = 768.
-02. Source: net/socket.c:346 passes 'init_once' (Constructor).
-03. Constraint: Constructor implies object content works as initialized state.
-04. Constraint: Allocator cannot overwrite object content with a free-pointer.
-05. Mechanism: Allocator expects external metadata (8-byte pointer on x86_64).
-06. Math: Intermediate Size = 768 + 8 = 776 bytes.
-07. Source: net/socket.c:342 passes flag SLAB_HWCACHE_ALIGN (Align to 64 bytes).
-08. Math: Next multiple of 64 after 776 is 832 (13 * 64).
-09. Result: 832 bytes is the mathematically forced size, not a choice.
++23: call new_inode_pseudo
+     Argument: rdi = super_block *
+     
+     Inside new_inode_pseudo:
+       calls alloc_inode(sb)
+       
+       Inside alloc_inode:
+         ops = sb->s_op (offset 48)
+         call ops->alloc_inode(sb)
+         
+         Inside sock_alloc_inode:
+           ei = kmem_cache_alloc(sock_inode_cachep, GFP_KERNEL)
+           returns &ei->vfs_inode
 
-VERIFICATION (Real-time Data):
-$ sudo cat /proc/slabinfo | grep sock_inode_cache
-sock_inode_cache    2180   2613    832   39    8 : tunables    0    0    0 : slabdata     67     67      0
++36: lea -0x80(%rax), %r12
+     rax = inode pointer (offset 128 in socket_alloc)
+     r12 = rax - 128 = socket pointer (offset 0)
 
-Proof: 832 bytes * 39 objects = 32,448 bytes -> Fits into 8-page (32KB) Order-3 Slab.
-
-INITIALIZATION 2: Mount Filesystem (kern_mount)
-
-  static int __init sock_init(void)
-  {
-      ...
-      sock_mnt = kern_mount(&sock_fs_type);
-      ...
-  }
-
-DERIVATION: THE MOUNT SEQUENCE (Why it exists):
-01. Axiom: A socket needs an inode (VFS object).
-02. Constraint: An inode must belong to a Superblock (Filesystem instance).
-03. Action: 'Alloc Superblock' creates the container for these inodes.
-04. Constraint: A Superblock needs a Mount Point to be visible/accessible.
-05. Action: 'Alloc vfsmount' creates the reference object used by kernel functions.
-06. Requirement: The Superblock needs to know HOW to behave (Operations).
-07. Action: 'Wire s_op' connects the generic SB to specific 'sockfs_ops'.
-08. Result: 'sock_mnt' is the single global root that anchors all 768-byte socket objects to the VFS.
-
-    [sock_mnt (vfsmount)]     [Superblock]           [sockfs_ops]
-    +-------------------+    +--------------+      +-------------------+
-    | mnt_sb  ----------+--->| s_op  -------+----->| alloc_inode       |--+
-    +-------------------+    +--------------+      +-------------------+  |
-                                                           |              v
-                                                    sock_alloc_inode()
-
-POINTER PROVENANCE: sock_mnt (vfsmount)
-----------------------------------------------------------------------
-Who created it: kern_mount() function at boot.
-What it points to: struct vfsmount (metadata for the sockfs mount).
-Memory validity: YES - Allocated from kernel heap during boot.
-Who validates it: kern_mount ensuring the SB is fully initialized.
-When valid: After sock_init() completes its boot-time execution.
-How used: Loaded via RIP-relative offset 0x18aa3a3 in sock_alloc().
-
-POINTER PROVENANCE: sb->s_op
-----------------------------------------------------------------------
-Who created it: mount_pseudo() during kern_mount.
-Points to: sockfs_ops at 0xffffffff8276e740 (Real Binary Address).
-Memory validity: YES - sockfs_ops resides in the read-only .data section.
-Who validates it: Compiler/Linker during the vmlinux build phase.
-When valid: At link-time (before the kernel even exists as a process).
-How used: Indirectly called by the VFS to allocate the centaur object.
-
-REAL MEMORY LAYOUT (Verified by pahole):
-----------------------------------------------------------------------
-The vfsmount contains:
-  +8 (mnt_sb): pointer to super_block
-
-The super_block contains:
-  +48 (s_op): pointer to super_operations (sockfs_ops)
-
-sockfs_ops @ 0xffffffff8276e740 contains:
-  +0  (alloc_inode): 0xffffffff821ccda0 (sock_alloc_inode)
-  +8  (destroy_inode): 0x0 (NULL)
-  +16 (free_inode): 0xffffffff821ccd60 (sock_free_inode)
++101: mov %r12, %rax
+      return socket pointer
 
 ======================================================================
-LAYER 4: RUNTIME EXECUTION (USER CALLS socket())
+REGISTER STATE TRANSITIONS
 ======================================================================
 
-The user-space program calls socket(AF_INET, SOCK_STREAM, IPPROTO_TCP).
-This triggers a syscall. The kernel's sock_alloc() function executes.
+User calls: socket(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6)
 
-CALLING CONVENTION (x86-64 syscall):
+Before syscall:
+  RDI = 2 (AF_INET)
+  RSI = 1 (SOCK_STREAM)
+  RDX = 6 (IPPROTO_TCP)
 
-  User calls: socket(AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6)
-  
-  CPU registers before syscall:
-    RDI = 2 (AF_INET, first argument)
-    RSI = 1 (SOCK_STREAM, second argument)
-    RDX = 6 (IPPROTO_TCP, third argument)
-  
-  Syscall transitions to kernel
-  Kernel __sys_socket(RDI=2, RSI=1, RDX=6)
-  
-  __sys_socket calls sock_create with same arguments
-  
-  sock_create uses the arguments to determine socket type, then:
-  
-  Calls __sock_create()
-  
-  __sock_create verifies security permissions and then:
-  
-  Calls sock_alloc()     <<< THESE ARGUMENTS ARE ABOUT TO BE DESTROYED
-  
-At this point, RDI, RSI, RDX still hold the user arguments. But sock_alloc()
-doesn't need them. sock_alloc() needs something else: a pointer to the
-superblock. To get it, sock_alloc() overwrites RDI.
+At sock_alloc entry:
+  RDI = 2 (still contains user argument)
 
-THE EXECUTION OF sock_alloc():
+At sock_alloc+6:
+  RAX = sock_mnt pointer
 
-The following disassembly shows the key instructions (simplified):
+At sock_alloc+19:
+  RDI = super_block pointer (user argument DESTROYED)
 
-  Instruction +6: mov 0x18aa3a3(%rip), %rax
-    Calculation: RIP + 0x18aa3a3 = 0xffffffff821cc3fd + 0x18aa3a3
-                                  = 0xffffffff83a767a0
-    Load: RAX = [0xffffffff83a767a0] = value of sock_mnt
-    After: RAX points to the vfsmount structure
-    Status: sock_mnt was allocated at boot, contains valid vfsmount pointer
+At sock_alloc+36 (after new_inode_pseudo returns):
+  RAX = inode pointer (offset 128 in allocated block)
+  R12 = RAX - 128 = socket pointer
 
-  Instruction +19: mov 0x8(%rax), %rdi
-    Address: RAX + 8 = vfsmount base + 8
-    Field: mnt_sb (superblock pointer, defined by compiler at offset 8)
-    Load: RDI = [RAX + 8] = super_block pointer
-    After: RDI points to the superblock structure
-    Status: super_block was allocated at boot, contains valid pointer
-    NOTE: RDI previously held AF_INET=2. That value is destroyed.
-          This is intentional—sock_alloc doesn't need socket type.
-
-  Instruction +23: call new_inode_pseudo
-    Argument: RDI = super_block pointer
-    Inside new_inode_pseudo:
-      Calls: alloc_inode(sb)
-      Inside alloc_inode:
-        Load: RAX = sb->s_op (at offset 48 in super_block)
-        RAX now points to sockfs_ops at 0xffffffff8276e740
-        Call: (*RAX)(sb)  or  call [RAX]
-              This jumps to sockfs_ops[0] = sock_alloc_inode
-
-  Inside sock_alloc_inode:
-    Call: kmem_cache_alloc(sock_inode_cachep)
-    
-    This allocates 768 bytes from the slab cache created at boot.
-    Returns: RAX = pointer to the allocated 768-byte block
-    Memory layout:
-      [0-127]:    socket structure
-      [128-767]:  inode structure
-    Actually: inode is at the END, socket is embedded BEFORE it
-      (socket_alloc structure: socket at offset 0, inode at offset 128)
-      AXIOM: sock_alloc_inode() added 128 to the allocated block.
-      sock_alloc() must subtract 128 to reclaim the socket.
-
-  Instruction +36: lea -0x80(%rax), %r12
-    Address: RAX - 128 (0x80 = 128 in hex)
-    RAX currently points to inode part of the allocated block
-    Calculation: R12 = RAX - 128 = address of socket structure
-    After: R12 points to the socket part of the 768-byte block
-    Offset -128: Compiled into instruction by gcc from struct socket_alloc
-    Status: socket is valid because it's in the allocated block
-
-  Return from sock_alloc:
-    RAX = R12 = socket pointer
-    This 768-byte block, with socket at the start, is returned to __sys_socket
-
-ASSEMBLY ARGUMENT PROVENANCE SUMMARY:
-
-  0x18aa3a3 (offset constant):
-    Computed by: gcc at compile time
-    Adjusted by: linker at link time
-    Contains: RIP-relative offset to sock_mnt global variable
-  
-  Offset 8 (vfsmount.mnt_sb):
-    Defined by: Compiler from struct vfsmount in linux/mount.h
-    Set at: Boot time by mount_pseudo()
-    Contains: pointer to super_block
-  
-  Offset 48 (super_block.s_op):
-    Defined by: Compiler from struct super_block in linux/fs.h
-    Set at: Boot time by mount_pseudo()
-    Contains: pointer to sockfs_ops (0xffffffff8276e740)
-  
-  Offset 0 in sockfs_ops (alloc_inode):
-    Defined by: Compiler from struct super_operations in linux/fs.h
-    Set at: Link time when sockfs_ops is initialized
-    Contains: pointer to sock_alloc_inode function (0xffffffff821ccda0)
-  
-  -0x80 (-128 in offset notation):
-    Defined by: Compiler from struct socket_alloc in net/socket.h
-    Contains: offset from inode to socket within allocated block
+At sock_alloc+101 (return):
+  RAX = socket pointer
 
 ======================================================================
-THE COMPLETE POINTER CHAIN
+MEMORY ALLOCATION
 ======================================================================
 
-When user calls socket(), the following POINTER CHAIN executes:
+Slab cache configuration:
+  Name: sock_inode_cache
+  Object size: 832 bytes
+  Objects per slab: 39
+  Slab order: 3 (8 pages = 32 KB)
 
-  USER ARGUMENTS: RDI=2, RSI=1, RDX=6 (socket type information)
-  
-  ↓ sock_alloc() called
-  ↓ RAX = sock_mnt (loaded via RIP-relative addressing)
-  ↓ RDI = RAX + 8 = vfsmount.mnt_sb = super_block pointer
-  ↓ call new_inode_pseudo(RDI)
-    ↓ alloc_inode(sb) called
-    ↓ RAX = sb + 48 = sb->s_op = sockfs_ops pointer (0xffffffff8276e740)
-    ↓ call [RAX] = call sockfs_ops[0] = sock_alloc_inode
-      ↓ sock_alloc_inode(sb) called
-      ↓ call kmem_cache_alloc(sock_inode_cachep)
-        ↓ slab allocator finds 768-byte block
-        ↓ returns inode pointer (within the block)
-      ↓ return inode pointer
-    ↓ return inode pointer (to sock_alloc)
-  ↓ R12 = RAX - 128 = inode pointer - 128 = socket pointer
-  ↓ return RAX = R12 = socket pointer
-  
-RESULT: 768-byte block allocated and returned
+Size calculation:
+  sizeof(socket_alloc) = 768
+  + free pointer (constructor requires external metadata) = 8
+  = 776 bytes
+  Aligned to 64 bytes = 832 bytes
 
-  #13 sock_alloc: call new_inode_pseudo(sb)
-  #14 new_inode_pseudo -> alloc_inode
-  #15 alloc_inode: ops = sb->s_op (= &sockfs_ops)
-  #16 alloc_inode: call ops->alloc_inode (= sock_alloc_inode)
-  #17 sock_alloc_inode: ei = alloc_inode_sb(768 bytes)
-  #18 sock_alloc_inode: return &ei->vfs_inode
-  #19 sock_alloc: R12 = RAX - 128 = &ei->socket        <<< CENTAUR MATH
-  #20 sock_alloc: return R12
+832 × 39 = 32,448 bytes
+Fits in Order-3 allocation (32,768 bytes)
 
-VERIFICATION COMMANDS:
-  pahole -C socket_alloc /boot/vmlinux-6.14.0-37-generic
-  nm /boot/vmlinux-6.14.0-37-generic | grep -E "sockfs_ops|sock_mnt"
-  gdb -batch -ex "disassemble sock_alloc" /boot/vmlinux-6.14.0-37-generic
-  cat /proc/slabinfo | grep sock_inode
-  cat /proc/filesystems | grep sockfs
-            </code></pre>
+Allocation mechanism (SLUB):
+  1. Load freelist pointer from per-CPU cache
+  2. Return current freelist address
+  3. Update freelist to next available block
+  Cost: O(1) - single pointer update
+
+Layout of 832-byte block:
+  [0-127]:   struct socket (128 bytes)
+  [128-751]: struct inode (624 bytes)
+  [752-767]: padding (16 bytes for alignment)
+  [768-775]: free pointer metadata (8 bytes)
+  [776-831]: padding to 64-byte boundary (56 bytes)
+</code></pre>
     </div>
 
-    <!-- RIGHT SIDE: FORENSIC MACHINE PROOFS (COMMANDS) -->
-    <div class="forensic-pane">
+    <div class="right-pane">
       <pre><code class="language-bash">
-================================================================================
-STAGE 0: KERNEL VERSION AND ENVIRONMENT VERIFICATION
-================================================================================
+======================================================================
+VERIFICATION COMMANDS
+======================================================================
 
 $ uname -a
-Linux i 6.14.0-37-generic #37~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Nov 20 10:25:38 UTC 2
+Linux i 6.14.0-37-generic #37~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC
 
 $ gcc --version
 gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
@@ -546,41 +324,99 @@ gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
 $ ld --version
 GNU ld (GNU Binutils for Ubuntu) 2.42
 
-COMPILATION CONTEXT:
-  Kernel: Linux 6.14.0-37-generic (x86_64)
-  Compiler: gcc-13.3.0
-  Linker: GNU ld 2.42
-  ABI: System V AMD64 (x86_64-linux-gnu)
+======================================================================
+SYMBOL TABLE
+======================================================================
 
-================================================================================
-STAGE 1: UAPI CONSTANTS VERIFICATION (From /usr/include)
-================================================================================
+$ nm /boot/vmlinux-6.14.0-37-generic | grep -E "sock_fs_type|sockfs_ops|sock_mnt"
+<span class="addr">ffffffff839c2dc0</span> d sock_fs_type
+<span class="addr">ffffffff8276e740</span> d sockfs_ops
+<span class="addr">ffffffff83a767a0</span> b sock_mnt
 
-$ grep -r "SOCK_STREAM" /usr/include
-/usr/include/linux/net.h:  SOCK_STREAM = 1
+$ nm /boot/vmlinux-6.14.0-37-generic | grep -E "sock_alloc_inode|sock_free_inode"
+<span class="addr">ffffffff821cc3f0</span> t sock_alloc_inode
+<span class="addr">ffffffff821cc4b0</span> t sock_free_inode
 
-$ grep -r "AF_INET" /usr/include
-/usr/include/linux/socket.h: #define AF_INET 2
+======================================================================
+FUNCTION POINTER VERIFICATION
+======================================================================
 
-$ grep -r "AF_MAX" /usr/include
-/usr/include/linux/socket.h: #define AF_MAX 46
+$ gdb -batch -ex "file /boot/vmlinuz-6.14.0-37-generic" \
+  -ex "x/2gx 0xffffffff8276e740"
+
+<span class="addr">0xffffffff8276e740</span>: <span class="addr">0xffffffff821cc3f0</span>  <span class="addr">0xffffffff821cc4b0</span>
+
+sockfs_ops[0] = 0xffffffff821cc3f0 = sock_alloc_inode
+sockfs_ops[8] = 0xffffffff821cc4b0 = sock_free_inode
+
+======================================================================
+STRUCT LAYOUT (pahole - DWARF)
+======================================================================
+
+$ pahole -C socket_alloc /boot/vmlinuz-6.14.0-37-generic
+struct socket_alloc {
+    struct socket  socket __attribute__((__aligned__(64))); /*   0   128 */
+    struct inode   vfs_inode __attribute__((__aligned__(8))); /* 128   624 */
+
+    /* size: 768, cachelines: 12, members: 2 */
+};
+
+$ pahole -C super_block /boot/vmlinuz-6.14.0-37-generic | grep s_op
+    const struct super_operations  * s_op;           /* 48   8 */
+
+$ pahole -C vfsmount /boot/vmlinuz-6.14.0-37-generic
+struct vfsmount {
+    struct dentry *            mnt_root;             /*  0   8 */
+    struct super_block *       mnt_sb;               /*  8   8 */
+    int                        mnt_flags;            /* 16   4 */
+
+    /* size: 24, cachelines: 1, members: 3 */
+};
+
+======================================================================
+ELF SECTIONS
+======================================================================
+
+$ readelf -S /boot/vmlinuz-6.14.0-37-generic | grep -E "\.text|\.data|\.bss"
+  .text     PROGBITS <span class="addr">ffffffff81000000</span>  00200000
+  .data     PROGBITS <span class="addr">ffffffff83600000</span>  02800000
+  .bss      NOBITS   <span class="addr">ffffffff83a9f000</span>  02e00000
+
+sock_fs_type @ <span class="addr">0xffffffff839c2dc0</span> → in .data (initialized)
+sockfs_ops   @ <span class="addr">0xffffffff8276e740</span> → in .data (initialized)
+sock_mnt     @ <span class="addr">0xffffffff83a767a0</span> → in .bss (zero-init, set at boot)
+
+======================================================================
+SLAB STATISTICS (RUNTIME)
+======================================================================
+
+$ cat /proc/slabinfo | grep sock_inode
+sock_inode_cache  2099  2340  832  39  8 : tunables 0 0 0 : slabdata 60 60 0
+
+Active objects: 2099
+Total objects:  2340
+Object size:    832 bytes
+Per slab:       39 objects
+Slab order:     8 pages
+
+======================================================================
+FILESYSTEM REGISTRATION
+======================================================================
+
+$ cat /proc/filesystems | grep sockfs
+nodev   sockfs
 
 $ cat /proc/sys/net/core/somaxconn
 4096
 
-AXIOM: Constants are sealed in userspace headers before kernel compilation.
-No speculation - these are compile-time facts.
+======================================================================
+SOURCE CODE VERIFICATION
+======================================================================
 
-================================================================================
-STAGE 2: KERNEL SOURCE INSPECTION (From /usr/src/linux-source-6.8.0)
-================================================================================
-
-LOCATE sock_fs_type:
 $ grep -n "static struct file_system_type sock_fs_type" \
   /usr/src/linux-source-6.8.0/net/socket.c
 425: static struct file_system_type sock_fs_type = {
 
-EXTRACT sock_fs_type:
 $ sed -n '425,429p' /usr/src/linux-source-6.8.0/net/socket.c
 425: static struct file_system_type sock_fs_type = {
 426:     .name             = "sockfs",
@@ -588,12 +424,10 @@ $ sed -n '425,429p' /usr/src/linux-source-6.8.0/net/socket.c
 428:     .kill_sb          = kill_anon_super,
 429: };
 
-LOCATE sockfs_ops:
 $ grep -n "static const struct super_operations sockfs_ops" \
   /usr/src/linux-source-6.8.0/net/socket.c
 351: static const struct super_operations sockfs_ops = {
 
-EXTRACT sockfs_ops:
 $ sed -n '351,355p' /usr/src/linux-source-6.8.0/net/socket.c
 351: static const struct super_operations sockfs_ops = {
 352:     .alloc_inode  = sock_alloc_inode,
@@ -601,278 +435,96 @@ $ sed -n '351,355p' /usr/src/linux-source-6.8.0/net/socket.c
 354:     .statfs       = simple_statfs,
 355: };
 
-LOCATE socket_alloc struct:
-$ grep -n "struct socket_alloc {" /usr/src/linux-source-6.8.0/include/net/sock.h
+$ grep -n "struct socket_alloc {" \
+  /usr/src/linux-source-6.8.0/include/net/sock.h
 1555: struct socket_alloc {
 
-EXTRACT socket_alloc:
 $ sed -n '1555,1558p' /usr/src/linux-source-6.8.0/include/net/sock.h
 1555: struct socket_alloc {
 1556:     struct socket socket;
 1557:     struct inode vfs_inode;
 1558: };
 
-================================================================================
-STAGE 3: STRUCT LAYOUT VERIFICATION (pahole - DWARF Analysis)
-================================================================================
+======================================================================
+DISASSEMBLY: sock_init()
+======================================================================
 
-$ pahole -C socket_alloc /boot/vmlinuz-6.14.0-37-generic
-struct socket_alloc {
-    struct socket              socket __attribute__((__aligned__(64))); /*     0   128 */
-    struct inode               vfs_inode __attribute__((__aligned__(8))); /*   128   624 */
-    size: 768, cachelines: 12, members: 2
-};
+$ gdb -batch -ex "disassemble sock_init" \
+  /boot/vmlinuz-6.14.0-37-generic | grep -A 5 "0x300"
 
-$ pahole -C super_block /boot/vmlinuz-6.14.0-37-generic | head -30
-struct super_block {
-    struct list_head           s_list;               /*     0    16 */
-    dev_t                      s_dev;                /*    16     4 */
-    ...
-    const struct super_operations  * s_op;           /*    48     8 */
-    ...
-};
+sock_init+93: mov    $0x300,%esi     # 0x300 = 768 decimal
 
-$ pahole -C vfsmount /boot/vmlinuz-6.14.0-37-generic
-struct vfsmount {
-    struct dentry *            mnt_root;             /*     0     8 */
-    struct super_block *       mnt_sb;               /*     8     8 */
-    int                        mnt_flags;            /*    16     4 */
-};
+$ gdb -batch -ex "disassemble sock_init" \
+  /boot/vmlinuz-6.14.0-37-generic | grep -A 2 "sock_mnt"
 
-AXIOM: Struct layouts are frozen at compile time. pahole reads DWARF to prove it.
+sock_init+194: mov    %rax,-0x1254d9(%rip)  # Store in sock_mnt
 
-================================================================================
-STAGE 4: SYMBOL RESOLUTION (nm - Binary Symbol Table)
-================================================================================
+======================================================================
+RIP-RELATIVE ADDRESS CALCULATION
+======================================================================
 
-$ nm /boot/vmlinux-6.14.0-37-generic | grep -E "sock_fs_type|sockfs_ops|sock_mnt"
-ffffffff839c2dc0 d sock_fs_type
-ffffffff8276e740 d sockfs_ops
-ffffffff83a767a0 b sock_mnt
+Instruction at sock_alloc+6:
+  mov 0x18aa3a3(%rip), %rax
 
-SYMBOL MEANINGS:
-  d = data section (initialized)
-  b = bss section (zero-initialized at boot)
+Next instruction at: <span class="addr">0xffffffff821cc3fd</span>
+Offset: <span class="addr">0x18aa3a3</span>
+Target: <span class="addr">0xffffffff821cc3fd</span> + <span class="addr">0x18aa3a3</span> = <span class="addr">0xffffffff83a767a0</span>
 
-LOCATIONS IN KERNEL IMAGE:
-  sock_fs_type @ <span class="addr">0xffffffff839c2dc0 (in .data section)
-  sockfs_ops   @ <span class="addr">0xffffffff8276e740 (in .data section)
-  sock_mnt     @ <span class="addr">0xffffffff83a767a0 (in .bss section, initially NULL)
+Verification:
+$ nm /boot/vmlinux-6.14.0-37-generic | grep sock_mnt
+<span class="addr">ffffffff83a767a0</span> b sock_mnt
 
-================================================================================
-STAGE 5: FUNCTION POINTER VERIFICATION (gdb - Live Binary Inspection)
-================================================================================
+Match confirmed.
 
-$ gdb -batch -ex "file /boot/vmlinuz-6.14.0-37-generic" \
-  -ex "x/2gx 0xffffffff8276e740" /boot/vmlinuz-6.14.0-37-generic
+======================================================================
+CALL CHAIN
+======================================================================
 
-<span class="addr">0xffffffff8276e740:     <span class="addr">0xffffffff821cc3f0      <span class="addr">0xffffffff821cc4b0
+socket(2, 1, 6)
+  → __sys_socket(family=2, type=1, protocol=6)
+    → sock_create(family=2, type=1, protocol=6, res)
+      → __sock_create(net, family=2, type=1, protocol=6, res, kern=0)
+        → sock_alloc()
+          → new_inode_pseudo(sb)
+            → alloc_inode(sb)
+              → sb->s_op->alloc_inode(sb)
+                → sock_alloc_inode(sb)
+                  → kmem_cache_alloc(sock_inode_cachep, GFP_KERNEL)
+                    [returns inode pointer at offset 128]
+                  [returns inode pointer]
+              [returns inode pointer]
+          [lea -0x80(%rax), %r12]
+          [returns socket pointer]
 
-DECODE:
-  At offset 0: <span class="addr">0xffffffff821cc3f0 = address of sock_alloc_inode (alloc_inode field)
-  At offset 8: <span class="addr">0xffffffff821cc4b0 = address of sock_free_inode (free_inode field)
+Result: 832-byte block allocated, socket pointer returned
 
-$ nm /boot/vmlinux-6.14.0-37-generic | grep -E "sock_alloc_inode|sock_free_inode"
-ffffffff821cc3f0 t sock_alloc_inode
-ffffffff821cc4b0 t sock_free_inode
+======================================================================
+POINTER CHAIN VERIFICATION
+======================================================================
 
-VERIFICATION: Symbols in /boot/vmlinux match function pointers in sockfs_ops!
+sock_mnt @ <span class="addr">0xffffffff83a767a0</span>
+  → points to struct vfsmount
 
-================================================================================
-STAGE 6: DISASSEMBLY - sock_init() BOOT-TIME EXECUTION
-================================================================================
+vfsmount + 8 (mnt_sb field)
+  → points to struct super_block
 
-$ gdb -batch -ex "disassemble sock_init" /boot/vmlinuz-6.14.0-37-generic | \
-  grep -A 5 "mov.*0x300"
+super_block + 48 (s_op field)
+  → points to <span class="addr">0xffffffff8276e740</span> (sockfs_ops)
 
-sock_init+93: mov    $0x300, %esi     # 0x300 = 768 decimal
+sockfs_ops + 0 (alloc_inode field)
+  → points to <span class="addr">0xffffffff821cc3f0</span> (sock_alloc_inode)
 
-PROOF: sock_init() allocates cache with 768-byte objects (sizeof socket_alloc).
+sock_alloc_inode
+  → calls kmem_cache_alloc(sock_inode_cachep)
+  → returns inode pointer (offset 128 in 832-byte block)
 
-DERIVATION OF THE 768-BYTE CONSTANT:
-----------------------------------------------------------------------
-01. struct socket size    = 128 bytes (proven by pahole)
-02. struct inode size     = 624 bytes (proven by pahole)
-03. Raw data sum          = 128 + 624 = 752 bytes
-04. Alignment (socket)    = 64 bytes (struct socket attribute)
-05. Alignment (inode)     = 8 bytes  (struct inode attribute)
-06. Padding               = 16 bytes (to align 752 to 64)
-07. Result                = 768 bytes.
-
-$ gdb -batch -ex "disassemble sock_init" /boot/vmlinuz-6.14.0-37-generic | \
-  grep -A 2 "mov.*sock_mnt"
-
-sock_init+194: mov    %rax, -0x1254d9(%rip)  # Store in [sock_mnt]
-
-PROOF: sock_mnt variable is populated after kern_mount() returns.
-
-================================================================================
-STAGE 7: DISASSEMBLY - sock_alloc() CENTAUR ARITHMETIC
-================================================================================
-
-$ gdb -batch -ex "disassemble sock_alloc" /boot/vmlinuz-6.14.0-37-generic
-
-Dump of assembler code for function sock_alloc:
-   <span class="addr">0xffffffff821cc3f0 <+0>:     call   <span class="addr">0xffffffff8133c290 <__fentry__>
-   <span class="addr">0xffffffff821cc3f5 <+5>:     push   %rbp
-   <span class="addr">0xffffffff821cc3f6 <+6>:     mov    0x18aa3a3(%rip),%rax        # Load sock_mnt
-   <span class="addr">0xffffffff821cc3fd <+13>:    mov    %rsp,%rbp
-   <span class="addr">0xffffffff821cc400 <+16>:    push   %r12
-   <span class="addr">0xffffffff821cc402 <+18>:    push   %rbx
-   <span class="addr">0xffffffff821cc403 <+19>:    mov    0x8(%rax),%rdi              # Load mnt_sb
-   <span class="addr">0xffffffff821cc407 <+23>:    call   <span class="addr">0xffffffff817f2bf0 <new_inode_pseudo>
-   <span class="addr">0xffffffff821cc40c <+28>:    test   %rax,%rax
-   <span class="addr">0xffffffff821cc40f <+31>:    je     <span class="addr">0xffffffff821cc465 <sock_alloc+117>
-   <span class="addr">0xffffffff821cc411 <+33>:    mov    %rax,%rbx
-   <span class="addr">0xffffffff821cc414 <+36>:    lea    -0x80(%rax),%r12           # CENTAUR: R12 = RAX - 128
-   <span class="addr">0xffffffff821cc418 <+40>:    call   <span class="addr">0xffffffff817edb80 <get_next_ino>
-   ...
-   <span class="addr">0xffffffff821cc455 <+101>:   mov    %r12,%rax                   # Return socket pointer
-   <span class="addr">0xffffffff821cc458 <+104>:   pop    %rbx
-   <span class="addr">0xffffffff821cc459 <+105>:   pop    %r12
-   <span class="addr">0xffffffff821cc45b <+107>:   pop    %rbp
-   <span class="addr">0xffffffff821cc45c <+108>:   xor    %edx,%edx
-   <span class="addr">0xffffffff821cc45e <+110>:   xor    %edi,%edi
-   <span class="addr">0xffffffff821cc460 <+112>:   jmp    <span class="addr">0xffffffff824f4af0 <__x86_return_thunk>
-
-KEY INSTRUCTION:
-   0xffffffff821cc414 <+36>:    lea    -0x80(%rax),%r12
-   
-   -0x80 in hex = -128 in decimal
-   RAX contains inode pointer (at offset 128)
-   R12 = RAX - 128 = socket pointer (at offset 0)
-
-================================================================================
-STAGE 8: LIVE KERNEL SLAB STATISTICS (Runtime Verification)
-================================================================================
-
-$ cat /proc/slabinfo | grep sock_inode
-sock_inode_cache    2099   2340    832   39    8 : tunables 0 0 0 : slabdata 60 60 0
-
-BREAKDOWN:
-  Name: sock_inode_cache
-  Active objects: 2099 (currently allocated)
-  Total objects: 2340 (total pool size)
-  Object size: 832 bytes (768 data + 64 metadata)
-  Objects per slab: 39 (fits in 4KB page)
-  Slab count: 60 (pages allocated)
-
-MATH VERIFICATION (832 BYTES):
-  768 bytes (Object) + 8 bytes (Free Pointer due to Constructor) = 776 bytes
-  776 bytes aligned to 64 bytes (SLAB_HWCACHE_ALIGN) = 832 bytes
-  832 * 39 objects = 32448 bytes
-  Allocated Slab Order: 3 (32768 bytes / 8 pages)
-
-================================================================================
-STAGE 9: REGISTER STATE VERIFICATION (kprobes)
-================================================================================
-
-Compiled probe modules in /home/r/Desktop/server/investigation:
-  - socket_probe.ko
-  - socket_dual_probe.ko
-  - full_chain_probe.ko
-  - socket_latency_probe.ko
-  - sock_alloc_probe.ko
-
-Example probe output (from full_chain_probe.c):
-  Hooks on __sys_socket entry:
-    RDI (arg1) = family (AF_INET=2)
-    RSI (arg2) = type (SOCK_STREAM=1)
-    RDX (arg3) = protocol (0)
-  
-  Hooks on sock_alloc entry:
-    RAX = [sock_mnt] (loaded in instruction 6 of disassembly)
-    RDI = [RAX+8] = mnt_sb (loaded in instruction 19)
-    User arguments (RDI, RSI, RDX) are ERASED
-
-DERIVATION OF THE ERASURE (Why "2" becomes a pointer):
-----------------------------------------------------------------------
-01. State(T-n): RDI = 2 (User-provided AF_INET)
-02. Constraint: RDI is the "Argument 1" register in System V ABI
-03. Requirement: new_inode_pseudo(sb) needs sb-pointer in Argument 1 (RDI)
-04. Property: RDI is a single 64-bit cell; can only hold one law at a time
-05. Substitution: Operation 'mov 0x8(%rax), %rdi' replaces 2 with sb-pointer
-∴ The number 2 is physically destroyed to serve as the handle for allocation.
-
-================================================================================
-STAGE 10: FILESYSTEM REGISTRATION VERIFICATION
-================================================================================
-
-$ cat /proc/filesystems | grep sockfs
-nodev   sockfs
-
-$ mount | grep sockfs
-sockfs on / type tmpfs (rw,nosuid,nodev,noexec)
-
-VERIFICATION: sockfs is registered and mounted at boot time.
-
-================================================================================
-STAGE 11: KERNEL COMPILATION PROOF (Linker Script)
-================================================================================
-
-$ readelf -S /boot/vmlinuz-6.14.0-37-generic | grep -E "\.data|\.bss|\.text"
-
-[Nr] Name              Type     Address          Offset
-     [...] .text         PROGBITS 0xffffffff81000000  0x00200000
-     [...] .data         PROGBITS 0xffffffff83600000  0x02800000
-     [...] .bss          NOBITS   0xffffffff83a9f000  0x02e00000
-
-SECTIONS:
-  .text     @ 0xffffffff81000000 (code)
-  .data     @ 0xffffffff83600000 (initialized globals)
-  .bss      @ 0xffffffff83a9f000 (zero-initialized globals)
-
-sock_fs_type @ 0xffffffff839c2dc0 = in .data (initialized)
-sock_mnt     @ 0xffffffff83a767a0 = in .bss (zero-initialized)
-sockfs_ops   @ 0xffffffff8276e740 = in .data (initialized)
-
-================================================================================
-FINAL FORENSIC VERDICT
-================================================================================
-
-AXIOMS VERIFIED:
-  ✓ AXIOM 1: Embedded structures (socket_alloc layout proven by pahole)
-  ✓ AXIOM 2: Function pointers (sockfs_ops addresses verified by nm + gdb)
-  ✓ AXIOM 3: Memory offsets (all offsets match pahole output)
-  ✓ AXIOM 4: RIP-relative addressing (visible in sock_alloc disassembly)
-  ✓ AXIOM 5: Slab allocator (live stats show 832-byte objects)
-  ✓ AXIOM 6: Compile-time sealing (constants in binary verified)
-  ✓ AXIOM 7: Calling convention (RDI/RSI/RDX/RAX confirmed)
-  ✓ AXIOM 8: Register erasure (RDI overwritten at sock_alloc+19)
-
-IDENTITY:
-  Kernel: Linux 6.14.0-37-generic (x86_64)
-  Compiler: gcc-13.3.0
-  Linker: GNU ld 2.42
-
-CONCLUSION:
-  No black boxes. Every claim grounded in:
-    - Source code inspection (/usr/src/linux-source-6.8.0)
-    - Binary analysis (pahole, nm, gdb, objdump)
-    - Live kernel telemetry (/proc/slabinfo, /proc/filesystems)
-    - Assembly disassembly (exact machine code)
-  
-  The socket_alloc embedding and centaur arithmetic are not abstractions.
-  They are physical facts of the Linux kernel, proven at every layer.
-
-================================================================================
-AXIOMATIC DERIVATION: VFS SCALING VIA FUNCTION POINTERS
-================================================================================
-01. Axiom: A CPU increments a number (RIP) to execute the next instruction ✓.
-02. Axiom: A 'Jump' (JMP/CALL) replaces RIP with a new number (Address) ✓.
-03. Observation: If a kernel supports N filesystems, it must choose 1 of N numbers ✓.
-04. Hypothetical (O(N)): Compare 'target_type' against N constants in a list ✓.
-05. Result (O(N)): Adding filesystem N+1 requires changing the central list ✗.
-06. Deduction: To avoid O(N) central changes, the number must be stored in the object ✓.
-07. Proof of Symbol: 'sock_alloc_inode' is located at address 0xffffffff821ccda0 ✓.
-08. Proof of Wiring: 'sockfs_ops' at 0xffffffff8276e740 stores that number at offset 0 ✓.
-09. Runtime Input: 'super_block->s_op' holds the address 0xffffffff8276e740 ✓.
-10. Computation: Load s_op → Load offset 0 of s_op → CALL results in 0xffffffff821ccda0 ✓.
-11. Conclusion: The kernel becomes an O(1) dispatcher where N can grow to infinity without recompiling the bridge ✓.
-∴ Scaling is a mathematical property of indirect addressing, not a choice ✓.
-            </code></pre>
+sock_alloc arithmetic:
+  inode_ptr - 128 = socket_ptr
+</code></pre>
     </div>
+
   </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
   <script>hljs.highlightAll();</script>
 </body>
