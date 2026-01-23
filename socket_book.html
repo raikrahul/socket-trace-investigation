@@ -220,7 +220,22 @@ EXECUTION OF sock_init():
   3. `sock_mnt` Assignment:
      - The address of the new vfsmount is stored in the global variable `sock_mnt`.
      - Verified Address: `0xffffffff83a767a0`.
-     * AXIOM (WHY?): SINGLETON ROOT. Your laptop has 46+ visible mounts (disks, snaps, proc), but `sockfs` is unique. It is an **internal, invisible filesystem** (verified: it does not appear in `/proc/mounts`). There is exactly ONE `sockfs` root for the entire machine, handling all sockets across all network cards. Because it is a singleton, we store its address globally (`sock_mnt`) to avoid searching for it, ensuring O(1) access.
+     * AXIOM (WHY?): SINGLETON ROOT & THE VFS TREE.
+       
+       **Your Laptop's Physical Hierarchy (Visible):**
+       [/] (Root) ───> [Superblock A] ───> nvme0n1p4 (Ext4)
+       ├── /boot ────> [Superblock B] ───> nvme0n1p1 (FAT)
+       └── /proc ────> [Superblock C] ───> Procfs (RAM)
+
+       **The Invisible Hierarchy (Internal):**
+       [sock_mnt] ───> [Superblock D] ───> sockfs (RAM)
+          ^
+          └── Global Pointer (0xffffffff83a767a0)
+
+       **Logic:** 
+       1. **Multiple Ext4s?** Yes. If you plug in a USB drive, you get a NEW Superblock E. Each physical disk needs its own metadata tracker.
+       2. **Multiple Sockfs?** NO. Sockets are abstract data structures in RAM, not physical sectors on a disk. All sockets (WiFi, Ethernet, Loopback) share the SAME kernel memory space.
+       3. **Why the Global Variable?** The visible tree is traversed via names (`/home/user`). The invisible tree has no names. The kernel allows us to skip the traversal entirely by pinning this specific root (`Superblock D`) to a global variable. It's an elevator that opens directly into the socket factory.
 
   4. `netfilter_init()`:
      - Verified Address: `0xffffffff83b9d750`.
