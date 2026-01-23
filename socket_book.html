@@ -66,6 +66,20 @@
         .forensic-pane .addr {
             color: #1f6feb;
         }
+
+        /* C SYNTAX HIGHLIGHTING RULES */
+        .c-kw { color: #d73a49; font-weight: 600; }      /* Keywords: struct, void, if, etc */
+        .c-type { color: #6f42c1; font-weight: 600; }    /* Types: int, char, unsigned, etc */
+        .c-func { color: #005a9c; font-weight: 600; }    /* Function names */
+        .c-var { color: #24292e; }                       /* Variable names */
+        .c-str { color: #032f62; }                       /* String literals */
+        .c-num { color: #005cc5; }                       /* Numeric literals */
+        .c-comment { color: #6a737d; font-style: italic; } /* Comments */
+        .c-ptr { color: #d73a49; font-weight: 600; }     /* Pointer operators: *, &, -> */
+        .c-op { color: #d73a49; }                        /* Operators: +, -, =, etc */
+        .c-cast { color: #6f42c1; }                      /* Type casts: (struct type) */
+        .c-offset { color: #005cc5; font-weight: 600; }  /* Offsets and addresses */
+        .c-macro { color: #6f42c1; }                     /* Macros: GFP_KERNEL, etc */
     </style>
 </head>
 
@@ -88,6 +102,111 @@ Date:    2026-01-23
 ================================================================================
 PREAMBLE: FOUNDATIONAL CONCEPTS (Teaching from First Principles)
 ================================================================================
+
+================================================================================
+C SYNTAX RULES AND CONVENTIONS (For Reading This Document)
+================================================================================
+
+RULE 1: STRUCTURE DEFINITION
+  <span class="c-kw">struct</span> <span class="c-type">socket_alloc</span> {
+      <span class="c-type">struct socket</span> socket;        <span class="c-comment">/* Embedded at offset 0 */</span>
+      <span class="c-type">struct inode</span> vfs_inode;      <span class="c-comment">/* Embedded at offset 128 */</span>
+  };
+
+  READ AS: "Define a structure named socket_alloc containing two embedded structs"
+  KEYWORD: struct = defines a composite data type
+  FIELD: The members inside {} are the fields of the structure
+  COMMENT: /* ... */ = human explanation (compiler ignores)
+
+RULE 2: POINTER DECLARATION
+  <span class="c-type">struct super_block</span> <span class="c-ptr">*</span>sb;
+  <span class="c-type">const struct super_operations</span> <span class="c-ptr">*</span>s_op;
+
+  READ AS: "sb is a pointer to struct super_block" 
+  POINTER OPERATOR: * = "pointer to" (address of a memory location)
+  const = value cannot be changed after initialization
+  
+RULE 3: FUNCTION POINTER IN STRUCTURE
+  <span class="c-type">struct inode</span> <span class="c-ptr">(*</span><span class="c-func">alloc_inode</span><span class="c-ptr">)(struct super_block *</span>sb<span class="c-ptr">)</span>;
+
+  READ AS: "alloc_inode is a function pointer that takes (struct super_block *) and returns struct inode *"
+  FORMAT: return_type (*name)(parameters);
+  CALL: result = ops->alloc_inode(sb);  OR  result = (*ops->alloc_inode)(sb);
+
+RULE 4: CASTING (Type Conversion)
+  <span class="c-cast">(<span class="c-type">char</span><span class="c-ptr">*</span>)</span>inode_ptr <span class="c-op">-</span> 128;
+
+  READ AS: "Cast inode_ptr to char pointer, then subtract 128"
+  CAST: (type)value = convert value to specified type
+  Why char*? Because char is 1 byte, so arithmetic is predictable
+
+RULE 5: OFFSET ADDRESSES
+  Offset 0:   <span class="c-offset">0xffffffff821cc400</span> = First field (alloc_inode)
+  Offset 8:   <span class="c-offset">0xffffffff821cc408</span> = Second field (destroy_inode)
+  Offset 16:  <span class="c-offset">0xffffffff821cc410</span> = Third field (free_inode)
+
+  READ AS: "At memory address 0x... offset 8, the next function pointer begins"
+  CALCULATION: Address + Offset = field location in memory
+  WHY 8? Because pointers are 8 bytes on 64-bit x86_64
+
+RULE 6: MACRO DEFINITIONS
+  <span class="c-macro">GFP_KERNEL</span> = allocation flag (use kernel memory, can sleep)
+  <span class="c-macro">GFP_ATOMIC</span> = allocation flag (must not sleep, use interrupt-safe pool)
+  <span class="c-macro">CONFIG_SECURITY</span> = compile-time configuration option
+
+  READ AS: "These are preprocessor constants (#define)"
+  MACRO: All uppercase, defined at compile time
+  VALUE: Compiler replaces macro with its definition before actual compilation
+
+RULE 7: INLINE ASSEMBLY (lea, mov, call)
+  <span class="c-kw">lea</span>    -0x80(<span class="c-ptr">%</span>rax), <span class="c-ptr">%</span>r12
+  READ AS: "Load Effective Address: R12 = RAX - 128"
+  
+  <span class="c-kw">mov</span>    0x18aa3a3(<span class="c-ptr">%</span>rip), <span class="c-ptr">%</span>rax
+  READ AS: "Move RIP-relative address into RAX"
+  RIP = Instruction Pointer (current code location)
+  Parentheses = memory dereference
+
+RULE 8: OPERATOR PRECEDENCE AND ASSOCIATION
+  <span class="c-ptr">-></span> (arrow)    = dereference and member access (ptr->field)
+  <span class="c-ptr">.</span> (dot)      = direct member access (struct.field)
+  <span class="c-op">*</span> (asterisk)  = dereference pointer (*ptr)
+  <span class="c-op">&</span> (ampersand) = address-of (get pointer to variable)
+  
+  EXAMPLE:
+    struct super_block *sb;          <span class="c-comment">/* sb is a pointer */</span>
+    sb->s_op;                        <span class="c-comment">/* Access s_op field through pointer */</span>
+    struct super_block sb2;          <span class="c-comment">/* sb2 is the actual struct */</span>
+    sb2.s_op;                        <span class="c-comment">/* Access s_op field directly */</span>
+
+RULE 9: COMMON KERNEL TYPES
+  <span class="c-type">dev_t</span> = Device ID (major, minor)
+  <span class="c-type">loff_t</span> = Long Offset (for file sizes)
+  <span class="c-type">atomic_t</span> = Atomic integer (thread-safe)
+  <span class="c-type">gfp_t</span> = Memory allocation flags
+  <span class="c-type">uuid_t</span> = 16-byte UUID structure
+
+RULE 10: READ THIS CODE BLOCK CORRECTLY
+  <span class="c-kw">static struct inode</span> <span class="c-ptr">*</span><span class="c-func">alloc_inode</span>(<span class="c-kw">struct super_block</span> <span class="c-ptr">*</span>sb) {
+      <span class="c-kw">const struct super_operations</span> <span class="c-ptr">*</span>ops <span class="c-op">=</span> sb<span class="c-ptr">-></span>s_op;
+      <span class="c-kw">if</span> (ops<span class="c-ptr">-></span>alloc_inode)
+          <span class="c-kw">return</span> ops<span class="c-ptr">-></span>alloc_inode(sb);
+      <span class="c-kw">return</span> alloc_inode_sb(sb, ...);
+  }
+
+  PARSING FROM LEFT TO RIGHT:
+    Line 1: "static" = hidden from other files
+            "struct inode *" = returns pointer to struct inode
+            "alloc_inode" = function name
+            "(struct super_block *sb)" = parameter: sb is a pointer to super_block
+    
+    Line 2: "const" = won't modify ops
+            "struct super_operations *ops" = declare ops pointer
+            "= sb->s_op" = initialize: ops points to s_op field of sb
+    
+    Line 3: "if (ops->alloc_inode)" = if this function pointer is not NULL
+    
+    Line 4: "return ops->alloc_inode(sb)" = call the function through pointer, pass sb
 
 ================================================================================
 AXIOM 0: THE IDENTITY OF THE SUPER_BLOCK
