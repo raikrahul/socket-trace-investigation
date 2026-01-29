@@ -1,37 +1,43 @@
 ---
 layout: default
-title: Home
 ---
 
-# Welcome to The Socket Trace Project
+# SOCKET TRACE INVESTIGATION: AXIOMATIC TRUTH
 
-We sell axiomatic understanding of the Linux Kernel.
+## 00. MANIFESTO
+01. No stories.
+02. No adjectives.
+03. Input -> Computation -> Output.
+04. Every line is an axiom or derived from previous axioms.
 
-## Products
+## 01. THE MISTAKES LOG
+[View Full Ruthless Report](wiki/Mistakes.md)
 
-### [Part 1: The Complete Socket Investigation](./part1.html)
-A deep dive into the `socket()` system call, featuring:
-*   Axiomatic derivation from counting to kernel
-*   All data structures explained
-*   60-step function trace
-*   [Axiomatic Detail: Tick 0 & 1 (Compiler, Linker, Boot)](./tick0_tick1_axiomatic.html)
-*   [Professional Proof: Split-Panel View (Tick 0 & 1)](./tick0_tick1_split.html)
-*   [The Complete Socket Journey (Compile -> Boot -> Tick 1)](./socket_journey.html)
-*   [What Happens When You Write socket()?](./socket_explained.html)
-*   **[Socket Theory: Axiomatic Derivation](./socket_theory.html)** | **[Socket Proof: Real Kernel Data](./socket_proof.html)**
-*   **[The Complete Book (Side-by-Side)](./socket_book.html)** - Click sections to expand
+### MAJOR ERROR: Array Assumption
+- WRONG: `inetsw[SOCK_STREAM] = TCP`
+- AXOIM: `inetsw[1]` is a LIST HEAD.
+- PROOF: Runtime probe found [TCP, MPTCP] in the list.
 
-### [Part 2: The Proof (Live Kernel Evidence)](./part2.html)
-Live forensic evidence proving socket() creates linked structures:
-*   [Split View (Proof vs Theory)](./part2-split.html)
+## 02. THE HARDER PUZZLE
+[View Axiomatic Derivation](wiki/The_Harder_Puzzle.md)
 
-### [Part 3: The Ultimate View (Proof + Theory + Q&A)](./part3-tripanel.html)
-The most comprehensive view, featuring:
-*   **LEFT:** Live Proof (dmesg output)
-*   **MIDDLE:** Axiomatic Theory & Derivations
-*   **RIGHT:** Q&A addressing confusions & mistakes
+### DATA DUMP (Kernel 6.14.0-37-generic)
+address(inetsw): 0xffffffffb1bcd040
+inetsw[1] contains:
+  1. TCP (proto=6)
+  2. MPTCP (proto=262)
 
----
+## 03. AXIOMATIC FLOW (socket(2, 1, 0))
+01. User calls `socket(2, 1, 0)`.
+02. Kernel enters `__sys_socket`.
+03. Kernel accesses `inetsw[1]`.
+04. Kernel ITERATES linked list.
+05. Node 1 (TCP): Protocol 6 != 0.
+06. Wildcard check: User passed 0? YES.
+07. Match! Select TCP.
+08. Return FD 3.
 
-All content derived from first principles. Nothing assumed.
-
+## 04. ARTIFACTS
+- `axiomatic_app.c`: Verifies File Descriptor logic.
+- `axiomatic_probe.c`: Verifies struct offsets (24, 288).
+- `axiomatic_probe_v2.c`: Verifies inetsw linked list (The Harder Puzzle).
