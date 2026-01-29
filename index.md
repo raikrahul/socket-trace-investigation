@@ -18,14 +18,19 @@ layout: default
 - AXOIM: `inetsw[1]` is a LIST HEAD.
 - PROOF: Runtime probe found [TCP, MPTCP] in the list.
 
-## 02. THE HARDER PUZZLE
-[View Axiomatic Derivation](wiki/The_Harder_Puzzle.md)
+## 02. THE PUZZLES SOLVED
 
-### DATA DUMP (Kernel 6.14.0-37-generic)
-address(inetsw): 0xffffffffb1bcd040
-inetsw[1] contains:
-  1. TCP (proto=6)
-  2. MPTCP (proto=262)
+### A. THE HARDER PUZZLE (Protocol Collision)
+[View Solution](wiki/The_Harder_Puzzle.md)
+- `inetsw` is a Hash Table + Linked List.
+- TCP (6) and MPTCP (262) coexist in Bucket 1.
+- Kernel scans list linearly to find match.
+
+### B. THE SLAB GEOMETRY PUZZLE (Memory Layout)
+[View Solution](wiki/Slab_Geometry_Puzzle.md)
+- `struct socket_alloc` = 768 bytes (12 cache lines).
+- `sock_inode_cache` = 832 bytes (13 cache lines).
+- Discovery: 64-byte Slab Overhead proved via probe/slabinfo delta.
 
 ## 03. AXIOMATIC FLOW (socket(2, 1, 0))
 01. User calls `socket(2, 1, 0)`.
@@ -38,6 +43,7 @@ inetsw[1] contains:
 08. Return FD 3.
 
 ## 04. ARTIFACTS
-- `axiomatic_app.c`: Verifies File Descriptor logic.
-- `axiomatic_probe.c`: Verifies struct offsets (24, 288).
-- `axiomatic_probe_v2.c`: Verifies inetsw linked list (The Harder Puzzle).
+- `proofs/axiomatic_app.c`: Verifies File Descriptor logic.
+- `proofs/axiomatic_probe.c`: Verifies struct offsets (24, 288).
+- `proofs/axiomatic_probe_v2.c`: Verifies inetsw linked list.
+- `proofs/axiomatic_probe_v3.c`: Verifies Slab sizes and Alignment.
