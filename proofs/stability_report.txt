@@ -1,0 +1,253 @@
+=== STARTING 10x STABILITY TEST ===
+Target inetsw address: 0xffffffffb1bcd040
+--- Iteration 1 ---
+[22877.189042] === AXIOM V2: INETSW TRAVERSAL START ===
+[22877.189048] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22877.189051] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22877.189053] AXIOM: Node Found at 000000005a36539a
+[22877.189056] AXIOM:   -> type     = 1 (Expected 1)
+[22877.189057] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22877.189059] AXIOM:   -> prot->name = TCP
+[22877.189061] AXIOM:   -> flags    = 0x6
+[22877.189062] AXIOM: Node Found at 0000000055388c08
+[22877.189064] AXIOM:   -> type     = 1 (Expected 1)
+[22877.189066] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22877.189068] AXIOM:   -> prot->name = MPTCP
+[22877.189070] AXIOM:   -> flags    = 0x4
+[22877.189071] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22877.280301] === AXIOM V3: SLAB GEOMETRY START ===
+[22877.280307] AXIOM: sizeof(struct socket)       = 128
+[22877.280309] AXIOM: sizeof(struct inode)        = 624
+[22877.280311] AXIOM: sizeof(struct socket_alloc) = 768
+[22877.280312] AXIOM: Raw Sum (socket + inode)    = 752
+[22877.280314] AXIOM: Delta (alloc - sum)         = 16
+[22877.280316] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22877.280317] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 2 ---
+[22878.387631] === AXIOM V2: INETSW TRAVERSAL START ===
+[22878.387641] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22878.387648] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22878.387653] AXIOM: Node Found at 000000005a36539a
+[22878.387659] AXIOM:   -> type     = 1 (Expected 1)
+[22878.387664] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22878.387669] AXIOM:   -> prot->name = TCP
+[22878.387674] AXIOM:   -> flags    = 0x6
+[22878.387678] AXIOM: Node Found at 0000000055388c08
+[22878.387683] AXIOM:   -> type     = 1 (Expected 1)
+[22878.387688] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22878.387693] AXIOM:   -> prot->name = MPTCP
+[22878.387698] AXIOM:   -> flags    = 0x4
+[22878.387702] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22878.503941] === AXIOM V3: SLAB GEOMETRY START ===
+[22878.503947] AXIOM: sizeof(struct socket)       = 128
+[22878.503949] AXIOM: sizeof(struct inode)        = 624
+[22878.503951] AXIOM: sizeof(struct socket_alloc) = 768
+[22878.503953] AXIOM: Raw Sum (socket + inode)    = 752
+[22878.503954] AXIOM: Delta (alloc - sum)         = 16
+[22878.503956] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22878.503958] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 3 ---
+[22879.621363] === AXIOM V2: INETSW TRAVERSAL START ===
+[22879.621373] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22879.621379] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22879.621385] AXIOM: Node Found at 000000005a36539a
+[22879.621391] AXIOM:   -> type     = 1 (Expected 1)
+[22879.621396] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22879.621401] AXIOM:   -> prot->name = TCP
+[22879.621406] AXIOM:   -> flags    = 0x6
+[22879.621410] AXIOM: Node Found at 0000000055388c08
+[22879.621415] AXIOM:   -> type     = 1 (Expected 1)
+[22879.621420] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22879.621425] AXIOM:   -> prot->name = MPTCP
+[22879.621430] AXIOM:   -> flags    = 0x4
+[22879.621434] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22879.711260] === AXIOM V3: SLAB GEOMETRY START ===
+[22879.711266] AXIOM: sizeof(struct socket)       = 128
+[22879.711268] AXIOM: sizeof(struct inode)        = 624
+[22879.711270] AXIOM: sizeof(struct socket_alloc) = 768
+[22879.711272] AXIOM: Raw Sum (socket + inode)    = 752
+[22879.711273] AXIOM: Delta (alloc - sum)         = 16
+[22879.711275] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22879.711276] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 4 ---
+[22880.809118] === AXIOM V2: INETSW TRAVERSAL START ===
+[22880.809125] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22880.809128] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22880.809129] AXIOM: Node Found at 000000005a36539a
+[22880.809132] AXIOM:   -> type     = 1 (Expected 1)
+[22880.809134] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22880.809135] AXIOM:   -> prot->name = TCP
+[22880.809138] AXIOM:   -> flags    = 0x6
+[22880.809139] AXIOM: Node Found at 0000000055388c08
+[22880.809141] AXIOM:   -> type     = 1 (Expected 1)
+[22880.809142] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22880.809144] AXIOM:   -> prot->name = MPTCP
+[22880.809146] AXIOM:   -> flags    = 0x4
+[22880.809147] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22880.882521] === AXIOM V3: SLAB GEOMETRY START ===
+[22880.882533] AXIOM: sizeof(struct socket)       = 128
+[22880.882537] AXIOM: sizeof(struct inode)        = 624
+[22880.882538] AXIOM: sizeof(struct socket_alloc) = 768
+[22880.882540] AXIOM: Raw Sum (socket + inode)    = 752
+[22880.882542] AXIOM: Delta (alloc - sum)         = 16
+[22880.882543] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22880.882545] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 5 ---
+[22881.972101] === AXIOM V2: INETSW TRAVERSAL START ===
+[22881.972106] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22881.972109] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22881.972111] AXIOM: Node Found at 000000005a36539a
+[22881.972113] AXIOM:   -> type     = 1 (Expected 1)
+[22881.972115] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22881.972117] AXIOM:   -> prot->name = TCP
+[22881.972119] AXIOM:   -> flags    = 0x6
+[22881.972121] AXIOM: Node Found at 0000000055388c08
+[22881.972123] AXIOM:   -> type     = 1 (Expected 1)
+[22881.972124] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22881.972126] AXIOM:   -> prot->name = MPTCP
+[22881.972128] AXIOM:   -> flags    = 0x4
+[22881.972129] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22882.059933] === AXIOM V3: SLAB GEOMETRY START ===
+[22882.059942] AXIOM: sizeof(struct socket)       = 128
+[22882.059945] AXIOM: sizeof(struct inode)        = 624
+[22882.059947] AXIOM: sizeof(struct socket_alloc) = 768
+[22882.059949] AXIOM: Raw Sum (socket + inode)    = 752
+[22882.059951] AXIOM: Delta (alloc - sum)         = 16
+[22882.059953] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22882.059955] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 6 ---
+[22883.158892] === AXIOM V2: INETSW TRAVERSAL START ===
+[22883.158902] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22883.158909] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22883.158914] AXIOM: Node Found at 000000005a36539a
+[22883.158921] AXIOM:   -> type     = 1 (Expected 1)
+[22883.158925] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22883.158931] AXIOM:   -> prot->name = TCP
+[22883.158936] AXIOM:   -> flags    = 0x6
+[22883.158941] AXIOM: Node Found at 0000000055388c08
+[22883.158946] AXIOM:   -> type     = 1 (Expected 1)
+[22883.158951] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22883.158956] AXIOM:   -> prot->name = MPTCP
+[22883.158961] AXIOM:   -> flags    = 0x4
+[22883.158972] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22883.259567] === AXIOM V3: SLAB GEOMETRY START ===
+[22883.259576] AXIOM: sizeof(struct socket)       = 128
+[22883.259581] AXIOM: sizeof(struct inode)        = 624
+[22883.259585] AXIOM: sizeof(struct socket_alloc) = 768
+[22883.259589] AXIOM: Raw Sum (socket + inode)    = 752
+[22883.259593] AXIOM: Delta (alloc - sum)         = 16
+[22883.259596] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22883.259600] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 7 ---
+[22884.360211] === AXIOM V2: INETSW TRAVERSAL START ===
+[22884.360216] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22884.360219] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22884.360221] AXIOM: Node Found at 000000005a36539a
+[22884.360224] AXIOM:   -> type     = 1 (Expected 1)
+[22884.360226] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22884.360227] AXIOM:   -> prot->name = TCP
+[22884.360229] AXIOM:   -> flags    = 0x6
+[22884.360231] AXIOM: Node Found at 0000000055388c08
+[22884.360232] AXIOM:   -> type     = 1 (Expected 1)
+[22884.360234] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22884.360236] AXIOM:   -> prot->name = MPTCP
+[22884.360238] AXIOM:   -> flags    = 0x4
+[22884.360239] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22884.453168] === AXIOM V3: SLAB GEOMETRY START ===
+[22884.453178] AXIOM: sizeof(struct socket)       = 128
+[22884.453184] AXIOM: sizeof(struct inode)        = 624
+[22884.453189] AXIOM: sizeof(struct socket_alloc) = 768
+[22884.453194] AXIOM: Raw Sum (socket + inode)    = 752
+[22884.453199] AXIOM: Delta (alloc - sum)         = 16
+[22884.453205] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22884.453211] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 8 ---
+[22885.559875] === AXIOM V2: INETSW TRAVERSAL START ===
+[22885.559885] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22885.559892] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22885.559897] AXIOM: Node Found at 000000005a36539a
+[22885.559903] AXIOM:   -> type     = 1 (Expected 1)
+[22885.559908] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22885.559913] AXIOM:   -> prot->name = TCP
+[22885.559918] AXIOM:   -> flags    = 0x6
+[22885.559923] AXIOM: Node Found at 0000000055388c08
+[22885.559928] AXIOM:   -> type     = 1 (Expected 1)
+[22885.559932] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22885.559937] AXIOM:   -> prot->name = MPTCP
+[22885.559942] AXIOM:   -> flags    = 0x4
+[22885.559947] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22885.682064] === AXIOM V3: SLAB GEOMETRY START ===
+[22885.682072] AXIOM: sizeof(struct socket)       = 128
+[22885.682077] AXIOM: sizeof(struct inode)        = 624
+[22885.682081] AXIOM: sizeof(struct socket_alloc) = 768
+[22885.682085] AXIOM: Raw Sum (socket + inode)    = 752
+[22885.682089] AXIOM: Delta (alloc - sum)         = 16
+[22885.682093] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22885.682097] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 9 ---
+[22886.790942] === AXIOM V2: INETSW TRAVERSAL START ===
+[22886.790951] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22886.790956] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22886.790960] AXIOM: Node Found at 000000005a36539a
+[22886.790965] AXIOM:   -> type     = 1 (Expected 1)
+[22886.790969] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22886.790973] AXIOM:   -> prot->name = TCP
+[22886.790977] AXIOM:   -> flags    = 0x6
+[22886.790980] AXIOM: Node Found at 0000000055388c08
+[22886.790984] AXIOM:   -> type     = 1 (Expected 1)
+[22886.790988] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22886.790992] AXIOM:   -> prot->name = MPTCP
+[22886.790996] AXIOM:   -> flags    = 0x4
+[22886.790999] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22886.877536] === AXIOM V3: SLAB GEOMETRY START ===
+[22886.877541] AXIOM: sizeof(struct socket)       = 128
+[22886.877543] AXIOM: sizeof(struct inode)        = 624
+[22886.877545] AXIOM: sizeof(struct socket_alloc) = 768
+[22886.877547] AXIOM: Raw Sum (socket + inode)    = 752
+[22886.877548] AXIOM: Delta (alloc - sum)         = 16
+[22886.877550] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22886.877552] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+--- Iteration 10 ---
+[22887.981502] === AXIOM V2: INETSW TRAVERSAL START ===
+[22887.981507] AXIOM: inetsw address provided: 0xffffffffb1bcd040
+[22887.981509] AXIOM: Inspecting inetsw[1] (SOCK_STREAM)
+[22887.981511] AXIOM: Node Found at 000000005a36539a
+[22887.981513] AXIOM:   -> type     = 1 (Expected 1)
+[22887.981515] AXIOM:   -> protocol = 6 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22887.981517] AXIOM:   -> prot->name = TCP
+[22887.981518] AXIOM:   -> flags    = 0x6
+[22887.981520] AXIOM: Node Found at 0000000055388c08
+[22887.981522] AXIOM:   -> type     = 1 (Expected 1)
+[22887.981523] AXIOM:   -> protocol = 262 (IPPROTO_TCP=6, IPPROTO_SCTP=132)
+[22887.981525] AXIOM:   -> prot->name = MPTCP
+[22887.981527] AXIOM:   -> flags    = 0x4
+[22887.981528] === AXIOM V2: INETSW TRAVERSAL END ===
+  v2 (Protocols): PASS
+[22888.080115] === AXIOM V3: SLAB GEOMETRY START ===
+[22888.080120] AXIOM: sizeof(struct socket)       = 128
+[22888.080122] AXIOM: sizeof(struct inode)        = 624
+[22888.080124] AXIOM: sizeof(struct socket_alloc) = 768
+[22888.080126] AXIOM: Raw Sum (socket + inode)    = 752
+[22888.080128] AXIOM: Delta (alloc - sum)         = 16
+[22888.080129] AXIOM: offsetof(struct socket_alloc, vfs_inode) = 128
+[22888.080131] === AXIOM V3: SLAB GEOMETRY END ===
+  v3 (Slab Size): PASS (768 confirmed)
+=== TEST COMPLETE ===

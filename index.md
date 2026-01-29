@@ -10,35 +10,24 @@ layout: default
 03. Input -> Computation -> Output.
 04. Every line is an axiom or derived from previous axioms.
 
-## 01. THE MISTAKES LOG
-[View Full Ruthless Report](wiki/Mistakes.md)
+## 01. THE CURRICULUM
 
-### MAJOR ERROR: Array Assumption
-- WRONG: `inetsw[SOCK_STREAM] = TCP`
-- AXOIM: `inetsw[1]` is a LIST HEAD.
-- PROOF: Runtime probe found [TCP, MPTCP] in the list.
+### [LESSON 1: THE SLAB GEOMETRY (DIFFICULT)](lessons/01_slab_geometry.md)
+The 64-byte discrepancy. 768 vs 832.
 
-## 02. THE PUZZLES SOLVED
+### [LESSON 2: THE MISTAKES LOG (EASY)](lessons/02_mistakes_log.md)
+Rejecting magic numbers and metaphors.
 
-### A. THE NUMERICAL RECONSTRUCTION (Primate Arithmetic)
-[View Solution](wiki/Numerical_Reconstruction.md)
-- `0` (Input) -> `6` (Output) via Arithmetic Comparison.
-- `Address A` (Socket) = `Address B` (Inode) - `128`.
-- `FD 3` = First Zero Bit in Bitmap.
+### [LESSON 3: PROTOCOL COLLISION (DIFFICULT)](lessons/03_protocol_collision.md)
+The Linked List inside `inetsw`. TCP vs MPTCP.
 
-### B. THE SLAB GEOMETRY PUZZLE (Memory Layout)
-[View Solution](wiki/Slab_Geometry_Puzzle.md)
-- `struct socket_alloc` = 768 bytes (12 cache lines).
-- `sock_inode_cache` = 832 bytes (13 cache lines).
-- Discovery: 64-byte Slab Overhead proved via probe/slabinfo delta.
+### [LESSON 4: PRIMATE ARITHMETIC (EASY)](lessons/04_primate_arithmetic.md)
+`Socket = Inode - 128`. Simple derivation.
 
-### C. THE HARDER PUZZLE (Protocol Collision)
-[View Solution](wiki/The_Harder_Puzzle.md)
-- `inetsw` is a Hash Table + Linked List.
-- TCP (6) and MPTCP (262) coexist in Bucket 1.
+### [LESSON 5: THE FULL AXIOMATIC TRACE (DIFFICULT)](lessons/05_axiomatic_trace.md)
+End-to-end execution path: Syscall -> Slab -> Linkage -> FD.
 
-## 03. ARTIFACTS
-- `proofs/axiomatic_app.c`: Verifies File Descriptor logic.
-- `proofs/axiomatic_probe.c`: Verifies struct offsets (24, 288).
-- `proofs/axiomatic_probe_v2.c`: Verifies inetsw linked list.
-- `proofs/axiomatic_probe_v3.c`: Verifies Slab sizes and Alignment.
+## 02. ARTIFACTS
+- `proofs/` - C Code verifying every axiom.
+- `wiki/` - Detailed technical archives.
+- `legacy_fluff/` - Archived non-axiomatic content.
