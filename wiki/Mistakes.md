@@ -35,3 +35,15 @@ LINE: Usage of Headers (H1, H2) and Adjectives ("Giant", "King of Networking").
 ERROR: "The user is a primate who understands counting". Adjectives confuse the primate.
 REALITY: Primate needs: `Input -> Process -> Output`.
 PREVENTION: Delete all adjectives. Use monospaced font. Use 01, 02, 03 numbering.
+
+## 06. THE METAPHOR TRAP (EMERGENCY REVIEW)
+LINE: "The Centaur Pattern" (socket_theory.html), "The Register Heist".
+ERROR: User requested "No stories". Metaphors are stories.
+REALITY: A `struct socket_alloc` is just a struct containing two other structs. It is not a mythological creature.
+PREVENTION: Use exact C type names (`struct socket_alloc`). Do not invent names.
+
+## 07. THE SECRET KNOWLEDGE FALLACY
+LINE: "Socket code 'pretends' to be a filesystem... 'secretly' knows".
+ERROR: Anthropomorphizing code. Code does not "pretend" or "know".
+REALITY: Code executes instructions. `sock_alloc` explicitly computes `inode - 128`.
+PREVENTION: Describe the arithmetic operation, not the "intent".
