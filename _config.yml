@@ -1,3 +1,5 @@
 title: SOCKET AXIOMS
 description: Zero Tolerance.
-permalink: /:title/
+markdown: kramdown
+baseurl: "/socket-trace-investigation"
+url: "https://raikrahul.github.io"
