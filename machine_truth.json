@@ -1,0 +1,40 @@
+{
+    "user_space": {
+        "constants": {
+            "AF_INET": 2,
+            "SOCK_STREAM": 1,
+            "IPPROTO_IP": 0,
+            "__NR_socket": 41
+        },
+        "types": {
+            "sizeof_int": 4,
+            "sizeof_long": 8
+        }
+    },
+    "kernel_space": {
+        "structs": {
+            "socket": 128,
+            "inode": 624,
+            "socket_alloc": 768,
+            "sock": 1392
+        },
+        "offsets": {
+            "socket_file": 288,
+            "socket_sk": 24,
+            "sock_sk_socket": 40,
+            "socket_alloc_vfs_inode": 128,
+            "socket_alloc_socket": 0
+        },
+        "slabs": {
+            "sock_inode_cache": {
+                "object_size": 832,
+                "requested_size": 768,
+                "overhead": 64
+            }
+        }
+    },
+    "machine_info": {
+        "kernel_version": "6.14.0-37",
+        "architecture": "x86_64"
+    }
+}
