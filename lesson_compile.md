@@ -1,50 +1,112 @@
 ---
 layout: default
-title: "Era II: Compile Time"
+title: "01_COMPILE_TIME"
 ---
 
-# ERA II: COMPILE TIME (THE FROZEN TRUTH)
-**"When kernel got compiled"**
+# 01. COMPILE TIME: ELF ARTIFACT ANALYSIS
 
-The source code was fed into `gcc`. The compiler took the abstract design from Era I and froze it into immutable binary facts.
+## ABSTRACT
+This document analyzes the link-time layout of the Socket Subsystem. It verifies the placement of critical symbols (`inetsw`, `sockfs_ops`, `sock_init`) within the ELF sections (`.bss`, `.rodata`, `.init.text`) of the `vmlinux` binary.
 
-## 01. THE LINKER'S SEAL
-The compiler calculated the addresses of every function and global variable. It decided *where* they would live forever (subject to boot-time sliding).
+## AXIOM 01: THE BINARY ARTIFACT
+- **Kernel Image**: `/boot/vmlinux-6.14.0-37-generic`
+- **Symbol Map**: `/boot/System.map-6.14.0-37-generic`
 
-### The Inetsw Array
-The compiler reserved space for the Protocol Switch Table.
-```bash
-$ nm vmlinux | grep inetsw
-ffffffff838abc00 D inetsw  # Placed in .data section
-```
-*Fact*: At this moment, `inetsw` is empty. It is a bucket of zeros waiting for Boot Time.
+## SECTION 01: THE BSS SECTION (UNINITIALIZED DATA)
 
-### The Operations Table
-The compiler sealed the File System operations into Read-Only memory.
-```bash
-$ nm vmlinux | grep sockfs_ops
-ffffffff8276e740 R sockfs_ops # Placed in .rodata
-```
-*Fact*: `R` means Read-Only. The logic for creating sockets is now immutable.
+### Mechanism: Static Allocation
+The `inetsw` array serves as the protocol registry. It is defined as a static global variable without an initializer.
 
-## 02. THE PREPROCESSOR TRUTH
-The preprocessor replaced human-readable macros with hard numbers.
-
-### The Container Math
-The compiler analyzed `SOCKET_I(inode)`:
+**Source Axiom**:
 ```c
-struct socket *SOCKET_I(struct inode *inode) {
-    return &container_of(inode, struct socket_alloc, vfs_inode)->socket;
-}
+// net/ipv4/af_inet.c
+static struct list_head inetsw[SOCK_MAX];
 ```
-Knowing from Era I that `vfs_inode` is at offset 128, the compiler replaced this entire function with a single instruction:
+
+**Linker Artificat**:
+- **Symbol**: `inetsw`
+- **Address**: `ffffffff841cd040`
+- **Section**: `.bss`
+
+**Derivation**:
+The symbol resides in the BSS because it is zero-initialized at load time. The address `ffffffff841cd040` is assigned by the linker script (`vmlinux.lds.S`), placing it in the high-memory kernel data segment. No runtime allocation is required; the memory is reserved by the ELF loader.
+
+## SECTION 02: THE RODATA SECTION (READ-ONLY DATA)
+
+### Mechanism: Constant Protection
+The `sockfs_ops` structure defines the filesystem methods. It is marked `const` to enforce immutability.
+
+**Source Axiom**:
+```c
+// net/socket.c
+static const struct super_operations sockfs_ops = { ... };
+```
+
+**Linker Artifact**:
+- **Symbol**: `sockfs_ops`
+- **Address**: `ffffffff8276e740`
+- **Section**: `.rodata`
+
+**Derivation**:
+The `const` qualifier directs `gcc` to emit this symbol into the `.rodata` section. The memory protection hardware (CR0.WP bit) prevents accidental or malicious modification of these function pointers at runtime.
+
+## SECTION 03: THE INIT.TEXT SECTION (DISCARDABLE CODE)
+
+### Mechanism: Boot-Time Memory Reclaim
+The `sock_init` function is required only during the boot sequence.
+
+**Source Axiom**:
+```c
+// net/socket.c
+static int __init sock_init(void) { ... }
+```
+
+**Linker Artifact**:
+- **Symbol**: `sock_init`
+- **Address**: `ffffffff83b9bbb0`
+- **Section**: `.init.text`
+
+**Derivation**:
+The `__init` macro expands to `__section(".init.text")`. The linker groups all such functions together. Once `start_kernel` completes, the function `free_initmem` releases the entire page range containing `ffffffff83b9bbb0` to the page allocator.
+
+## SECTION 04: THE DATA SECTION (PERSISTENT STATE)
+
+### Mechanism: Global Visibility
+The `sock_mnt` pointer anchors the socket filesystem instance.
+
+**Source Axiom**:
+```c
+// net/socket.c
+static struct vfsmount *sock_mnt;
+```
+
+**Linker Artifact**:
+- **Symbol**: `sock_mnt`
+- **Address**: `ffffffff83a767a0`
+- **Section**: `.data` (Read-Mostly)
+
+**Derivation**:
+This variable persists for the kernel's lifetime. Its address `ffffffff83a767a0` is the fixed location where the `kern_mount` result will be stored.
+
+## SECTION 05: INLINE OPTIMIZATION
+
+### Mechanism: Compile-Time Offset Calculation
+The `SOCKET_I` macro resolves the `struct socket` from a `struct inode`.
+
+**Source Logic**:
+```c
+return &container_of(inode, struct socket_alloc, vfs_inode)->socket;
+```
+
+**Instruction Generation**:
+Given:
+- `sizeof(struct socket) = 128`
+- `offsetof(struct socket_alloc, vfs_inode) = 128`
+
+The compiler generates:
 ```asm
-lea -0x80(%rax), %r12  ; Subtract 128 (0x80) from inode address
+lea -128(%reg), %reg
 ```
-*Fact*: There is no function call at runtime. Just a subtraction.
+There is no runtime overhead or complex logic. The relationship is strictly geometric and resolved during compilation.
 
-## 03. THE INITCALL LIST
-The compiler gathered all functions marked `__init` (like `sock_init` and `inet_init`) and placed pointers to them in a special section `.init.text`.
-This created the "To-Do List" for the boot process.
-
-**[ NEXT: ERA III - BOOT TIME ](lesson_boot.html)**
+**[ NEXT: 02_BOOT_TIME ](lesson_boot.html)**
