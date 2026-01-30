@@ -27,9 +27,10 @@ layout: default
 [ 0.000022] <a href="lessons/04_primate_arithmetic.md">EXIT        </a> : fd_install(3, file)
 [ 0.000022] <a href="lessons/04_primate_arithmetic.md">EXIT_MATH   </a> : current->files->fdt->fd[3] == file (Verified)
 [ 0.000023] <a href="lessons/04_primate_arithmetic.md">EXIT        </a> : return 3
+[ ........ ]
+[ FUTURE   ] <a href="planning_report_genesis.md">VECTOR      </a> : GENESIS_PLAN (Design -> Compile -> Boot) [PENDING_PROOF]
 
 [ MANUALS  ]
 [ MAN 00   ] <a href="lessons/10_lkml_manifesto.md">THE_LKML_MANIFESTO</a> (Zero Tolerance)
-[ MAN 01   ] <a href="lessons/00_llm_preface.md">INTELLIGENT_AGENTS</a> (Usage Guide)
-[ MAN 02   ] <a href="lessons/02_mistakes_log.md">MISTAKES_LOG      </a> (Retired Metaphors)
+[ MAN 01   ] <a href="lessons/02_mistakes_log.md">MISTAKES_LOG      </a> (Retired Metaphors)
 </pre>

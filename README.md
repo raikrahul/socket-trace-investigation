@@ -1,27 +1,26 @@
-# SOCKET TRACE INVESTIGATION: AXIOMATIC TRUTH
+# SOCKET TRACE: AXIOMATIC VERIFICATION
 
-**[LIVE SITE: https://raikrahul.github.io/socket-trace-investigation/](https://raikrahul.github.io/socket-trace-investigation/)**
+**[LIVE LOG: https://raikrahul.github.io/socket-trace-investigation/](https://raikrahul.github.io/socket-trace-investigation/)**
 
-## The Manifesto (Zero Tolerance)
-This repository contains the **Axiomatic Derivation** of the Linux Kernel `socket()` syscall. It rejects all metaphors ("Centaurs", "Black Magic") in favor of pure arithmetic and machine-verifiable truth.
+## PURPOSE
+To mathematically derive the execution path of the `socket(2, 1, 0)` system call from User Space (ASM) to Kernel Space (SLAB), verifying every constant via runtime interrogation of the Linux Kernel (v6.14.0-37).
 
-## The Curriculum
-The content is structured as a SaaS product for Intelligent Agents (LLMs) and Kernel Maintainers:
-*   **Lesson 10: The LKML Manifesto**: The geometry of Zero-Cost Abstraction.
-*   **Lesson 11: The Russian Doll Puzzle**: Deep memory inheritance (`sock` vs `tcp_sock`).
-*   **Lesson 01-05**: The ruthless derivation of the Kernel path.
-*   **Lesson 06-08**: The gapless derivation of the User Space path.
+## VERIFIED AXIOMS
+All data in this repository is derived from the accompanying C probes in `proofs/`.
+- **System Call**: `__NR_socket` (41) via `MSR_LSTAR` (0xffffffff97800080).
+- **Allocatoin**: `sock_inode_cache` (832 bytes) vs `socket_alloc` (768 bytes).
+- **Dispatch**: `inetsw[1]` collision resolution (TCP vs MPTCP).
+- **Inheritance**: `sizeof(tcp_sock)` (2360 bytes) > `sizeof(sock)` (776 bytes).
 
-## The Evidence (Machine Truth)
-All axioms are derived from the running machine (Kernel 6.14.0-37).
-*   **`proofs/`**: C programs that verify every claim (Offsets, Sizes, Collisions).
-*   **`machine_truth.json`**: The measuring tape of the kernel.
-*   **`wiki/`**: Detailed analysis of solved puzzles.
+## REPRODUCTION
+The "Linus Protocol" requires `sudo` privileges to insert kernel modules for measurement.
 
-## How to Verify
-1.  Clone the repo.
-2.  `cd proofs && make`
-3.  `./userspace_verify`
-4.  `make -C ... axiom_fetcher` (Kernel Module)
+```bash
+git clone https://github.com/raikrahul/socket-trace-investigation.git
+cd socket-trace-investigation/proofs
+make
+sudo ./run_probes.sh
+```
 
-**Status**: PROVEN.
+## STATUS
+**VERIFIED**. No metaphors. No abstractions. Only machine truth.
