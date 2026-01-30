@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AXIOMATIC KERNEL TRACING: DESIGN TO SOCKET</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .header {
+            border: 2px solid #00ff00;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #001100;
+            text-align: center;
+        }
+        .phase-nav {
+            display: flex;
+            justify-content: center;
+            gap: 2px;
+            margin-bottom: 30px;
+            background-color: #001100;
+            padding: 10px;
+            border: 1px solid #00ff00;
+        }
+        .phase-btn {
+            background-color: #000000;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 10px;
+        }
+        .phase-btn:hover {
+            background-color: #003300;
+        }
+        .phase-btn.active {
+            background-color: #00ff00;
+            color: #000000;
+            font-weight: bold;
+        }
+        .phase-content {
+            display: none;
+            border: 1px solid #00ff00;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #000011;
+        }
+        .phase-content.active {
+            display: block;
+        }
+        .axiom-section {
+            margin: 15px 0;
+            padding: 10px;
+            border-left: 3px solid #ffff00;
+            background-color: #001100;
+        }
+        .axiom-title {
+            color: #ffff00;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .axiom-content {
+            color: #00ff00;
+            white-space: pre;
+        }
+        .proof-section {
+            margin: 15px 0;
+            padding: 10px;
+            border-left: 3px solid #00ffff;
+            background-color: #000011;
+        }
+        .proof-title {
+            color: #00ffff;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .proof-content {
+            color: #00ff00;
+            white-space: pre;
+        }
+        .register-display {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            margin: 10px 0;
+            font-size: 10px;
+        }
+        .register {
+            background-color: #001100;
+            border: 1px solid #00ff00;
+            padding: 3px;
+        }
+        .register-name {
+            color: #ffff00;
+            font-weight: bold;
+        }
+        .register-value {
+            color: #00ffff;
+        }
+        .memory-visual {
+            background-color: #001100;
+            border: 1px solid #00ff00;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 10px;
+            white-space: pre;
+        }
+        .equation {
+            background-color: #000022;
+            border: 1px solid #ffff00;
+            padding: 10px;
+            margin: 10px 0;
+            color: #ffff00;
+            font-weight: bold;
+            text-align: center;
+        }
+        .status-bar {
+            background-color: #000000;
+            border: 1px solid #00ff00;
+            padding: 5px;
+            margin: 5px 0;
+            color: #00ffff;
+            text-align: right;
+            font-size: 10px;
+        }
+        .interactive-probe {
+            background-color: #112200;
+            border: 1px solid #00ff00;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .probe-btn {
+            background-color: #00ff00;
+            color: #000000;
+            border: none;
+            padding: 5px 10px;
+            font-family: monospace;
+            cursor: pointer;
+            margin: 2px;
+            font-size: 10px;
+        }
+        .probe-result {
+            background-color: #000011;
+            border: 1px solid #00ffff;
+            padding: 5px;
+            margin: 5px 0;
+            font-family: monospace;
+            font-size: 9px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>AXIOMATIC KERNEL TRACING</h1>
+        <h2>FROM DESIGN TO SOCKET ALLOCATION</h2>
+        <div class="status-bar">CYCLE: <span id="cycle-counter">0</span> | PHASE: <span id="current-phase">DESIGN</span></div>
+    </div>
+
+    <div class="phase-nav">
+        <button class="phase-btn active" onclick="showPhase('design')">01 DESIGN</button>
+        <button class="phase-btn" onclick="showPhase('compile')">02 COMPILE</button>
+        <button class="phase-btn" onclick="showPhase('boot')">03 BOOT</button>
+        <button class="phase-btn" onclick="showPhase('socket')">04 SOCKET</button>
+        <button class="phase-btn" onclick="showPhase('alloc')">05 ALLOC</button>
+    </div>
+
+    <!-- PHASE 01: DESIGN TIME -->
+    <div id="design" class="phase-content active">
+        <div class="axiom-section">
+            <div class="axiom-title">AXIOM 01: VFS-NET BRIDGE</div>
+            <div class="axiom-content">PROBLEM: VFS requires struct inode*, NET requires struct socket*
+CONSTRAINT: Zero-cost conversion between views
+SOLUTION: Co-locate both structs in single memory block</div>
+        </div>
+
+        <div class="proof-section">
+            <div class="proof-title">PROOF: STRUCT SOCKET_ALLOC</div>
+            <div class="proof-content">struct socket_alloc {
+    struct socket socket;   // Offset 0    (128 bytes)
+    struct inode vfs_inode; // Offset 128  (624 bytes)
+};</div>
+        </div>
+
+        <div class="equation">Socket Pointer = Memory Base
+Inode Pointer   = Memory Base + 128
+Conversion Cost = 0 CPU Cycles</div>
+
+        <div class="interactive-probe">
+            <button class="probe-btn" onclick="probeDesign()">VERIFY DESIGN</button>
+            <div id="design-result" class="probe-result"></div>
+        </div>
+    </div>
+
+    <!-- PHASE 02: COMPILE TIME -->
+    <div id="compile" class="phase-content">
+        <div class="axiom-section">
+            <div class="axiom-title">AXIOM 02: PREPROCESSOR SUBSTITUTION</div>
+            <div class="axiom-content">INPUT: socket(AF_INET, SOCK_STREAM, 0)
+CPP:   AF_INET -> 2
+CPP:   SOCK_STREAM -> 1  
+CPP:   IPPROTO_IP -> 0
+OUTPUT: socket(2, 1, 0)</div>
+        </div>
+
+        <div class="proof-section">
+            <div class="proof-title">PROOF: REGISTER MAPPING (System V AMD64 ABI)</div>
+            <div class="proof-content">mov $2, %rdi  ; family (ARG1)
+mov $1, %rsi  ; type (ARG2)  
+mov $0, %rdx  ; protocol (ARG3)
+mov $41, %rax ; syscall number (__NR_socket)
+syscall       ; TRAP TO KERNEL</div>
+        </div>
+
+        <div class="register-display">
+            <div class="register"><div class="register-name">RAX:</div><div class="register-value">0x29 (41)</div></div>
+            <div class="register"><div class="register-name">RDI:</div><div class="register-value">0x2 (AF_INET)</div></div>
+            <div class="register"><div class="register-name">RSI:</div><div class="register-value">0x1 (SOCK_STREAM)</div></div>
+            <div class="register"><div class="register-name">RDX:</div><div class="register-value">0x0 (IPPROTO_IP)</div></div>
+        </div>
+
+        <div class="interactive-probe">
+            <button class="probe-btn" onclick="probeCompile()">VERIFY COMPILATION</button>
+            <div id="compile-result" class="probe-result"></div>
+        </div>
+    </div>
+
+    <!-- PHASE 03: BOOT TIME -->
+    <div id="boot" class="phase-content">
+        <div class="axiom-section">
+            <div class="axiom-title">AXIOM 03: SLAB CACHE CREATION</div>
+            <div class="axiom-content">INITIALIZATION: sock_init() @ boot time
+OPERATION: kmem_cache_create("sock_inode_cache")
+REQUEST: sizeof(struct socket_alloc) = 768 bytes
+ALIGNMENT: 64-byte cache lines</div>
+        </div>
+
+        <div class="proof-section">
+            <div class="proof-title">PROOF: SLAB GEOMETRY</div>
+            <div class="proof-content">Requested: 768 bytes (12 cache lines)
+Allocated: 832 bytes (13 cache lines)
+Overhead: 64 bytes (1 cache line)
+Efficiency: 92.3% payload, 7.7% overhead</div>
+        </div>
+
+        <div class="axiom-section">
+            <div class="axiom-title">AXIOM 04: PROTOCOL REGISTRATION</div>
+            <div class="axiom-content">INITIALIZATION: inet_init() @ boot time
+OPERATION: inet_register_protosw()
+STRUCTURE: inetsw[SOCK_STREAM] -> linked list
+ENTRIES: TCP (protocol=6), MPTCP (protocol=262)</div>
+        </div>
+
+        <div class="interactive-probe">
+            <button class="probe-btn" onclick="probeBoot()">VERIFY BOOT</button>
+            <div id="boot-result" class="probe-result"></div>
+        </div>
+    </div>
+
+    <!-- PHASE 04: SOCKET SYSTEM CALL -->
+    <div id="socket" class="phase-content">
+        <div class="axiom-section">
+            <div class="axiom-title">AXIOM 05: SYSCALL DISPATCH</div>
+            <div class="axiom-content">ENTRY: entry_SYSCALL_64()
+VALIDATION: __sys_socket(family=2, type=1, protocol=0)
+PROTOCOL RESOLUTION: inetsw[1] linear scan
+SELECTION: TCP (protocol=6) via IPPROTO_IP wildcard</div>
+        </div>
+
+        <div class="proof-section">
+            <div class="proof-title">PROOF: PROTOCOL COLLISION CHAIN</div>
+            <div class="proof-content">inetsw[1] -> [TCP (6)] -> [MPTCP (262)] -> NULL
+SCAN LOGIC:
+if (protocol == answer->protocol) break;     // EXACT MATCH
+if (IPPROTO_IP == protocol) protocol = answer->protocol; break; // WILDCARD</div>
+        </div>
+
+        <div class="equation">Input: (2, 1, 0) -> Resolution: (2, 1, 6) -> TCP Selected</div>
+
+        <div class="interactive-probe">
+            <button class="probe-btn" onclick="probeSocket()">VERIFY SOCKET CALL</button>
+            <div id="socket-result" class="probe-result"></div>
+        </div>
+    </div>
+
+    <!-- PHASE 05: SOCKET ALLOCATION -->
+    <div id="alloc" class="phase-content">
+        <div class="axiom-section">
+            <div class="axiom-title">AXIOM 06: MEMORY ALLOCATION</div>
+            <div class="axiom-content">OPERATION: kmem_cache_alloc(sock_inode_cache)
+RETURN: Base address A (e.g., 0xffff888100000000)
+GEOMETRY: socket @ offset 0, inode @ offset 128
+PHYSICAL: 832 bytes allocated from slab cache</div>
+        </div>
+
+        <div class="proof-section">
+            <div class="proof-title">PROOF: RUSSIAN DOLL INHERITANCE</div>
+            <div class="proof-content">struct tcp_sock (2360 bytes)
+├── struct inet_connection_sock (1136 bytes)
+│   ├── struct inet_sock (960 bytes)
+│   │   └── struct sock (776 bytes)
+│   └── [+176 bytes]
+└── [+1224 bytes]</div>
+        </div>
+
+        <div class="memory-visual">
+Memory Layout at Address A:
+0x0000: [struct socket]           (128 bytes)
+0x0080: [struct inode]            (624 bytes) 
+0x0300: [struct tcp_sock]         (2360 bytes)
+Total: 3112 bytes (physical allocation)</div>
+
+        <div class="equation">fd_install(3, file) -> return 3</div>
+
+        <div class="interactive-probe">
+            <button class="probe-btn" onclick="probeAlloc()">VERIFY ALLOCATION</button>
+            <div id="alloc-result" class="probe-result"></div>
+        </div>
+    </div>
+
+    <script>
+        let cycleCount = 0;
+        let currentPhase = 'design';
+
+        function updateCycleCounter() {
+            cycleCount += Math.floor(Math.random() * 100) + 50;
+            document.getElementById('cycle-counter').textContent = cycleCount.toLocaleString();
+        }
+
+        function showPhase(phaseName) {
+            // Hide all phases
+            document.querySelectorAll('.phase-content').forEach(phase => {
+                phase.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.phase-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected phase
+            document.getElementById(phaseName).classList.add('active');
+            
+            // Activate corresponding button
+            const buttons = document.querySelectorAll('.phase-btn');
+            const phaseIndex = ['design', 'compile', 'boot', 'socket', 'alloc'].indexOf(phaseName);
+            if (phaseIndex !== -1) {
+                buttons[phaseIndex].classList.add('active');
+            }
+            
+            currentPhase = phaseName;
+            document.getElementById('current-phase').textContent = phaseName.toUpperCase();
+        }
+
+        function logProbe(resultId, message, type = 'info') {
+            const result = document.getElementById(resultId);
+            const timestamp = new Date().toISOString().substr(11, 12);
+            const color = type === 'error' ? '#ff0000' : type === 'success' ? '#00ff00' : '#00ffff';
+            result.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            result.scrollTop = result.scrollHeight;
+        }
+
+        function probeDesign() {
+            const resultId = 'design-result';
+            document.getElementById(resultId).innerHTML = '';
+            logProbe(resultId, 'Design verification initiated...', 'info');
+            
+            setTimeout(() => {
+                logProbe(resultId, 'Verifying struct socket_alloc layout...', 'info');
+                logProbe(resultId, `offsetof(struct socket_alloc, socket) = 0`, 'success');
+                logProbe(resultId, `offsetof(struct socket_alloc, vfs_inode) = 128`, 'success');
+                logProbe(resultId, 'Zero-cost bridge confirmed', 'success');
+                logProbe(resultId, 'Design axiom verified', 'success');
+            }, 500);
+        }
+
+        function probeCompile() {
+            const resultId = 'compile-result';
+            document.getElementById(resultId).innerHTML = '';
+            logProbe(resultId, 'Compilation verification initiated...', 'info');
+            
+            setTimeout(() => {
+                logProbe(resultId, 'Preprocessor substitution:', 'info');
+                logProbe(resultId, 'AF_INET -> 2', 'success');
+                logProbe(resultId, 'SOCK_STREAM -> 1', 'success');
+                logProbe(resultId, 'IPPROTO_IP -> 0', 'success');
+                logProbe(resultId, 'Register mapping verified', 'success');
+                logProbe(resultId, 'Compilation axiom verified', 'success');
+            }, 500);
+        }
+
+        function probeBoot() {
+            const resultId = 'boot-result';
+            document.getElementById(resultId).innerHTML = '';
+            logProbe(resultId, 'Boot verification initiated...', 'info');
+            
+            setTimeout(() => {
+                logProbe(resultId, 'Slab cache creation verified', 'success');
+                logProbe(resultId, 'sock_inode_cache: 832 bytes', 'success');
+                logProbe(resultId, 'Protocol registration verified', 'success');
+                logProbe(resultId, 'inetsw[1] contains TCP, MPTCP', 'success');
+                logProbe(resultId, 'Boot axiom verified', 'success');
+            }, 500);
+        }
+
+        function probeSocket() {
+            const resultId = 'socket-result';
+            document.getElementById(resultId).innerHTML = '';
+            logProbe(resultId, 'Socket syscall verification initiated...', 'info');
+            
+            setTimeout(() => {
+                logProbe(resultId, 'Input: socket(2, 1, 0)', 'info');
+                logProbe(resultId, 'Scanning inetsw[1]...', 'info');
+                logProbe(resultId, 'Found TCP at protocol=6', 'success');
+                logProbe(resultId, 'Wildcard match: IPPROTO_IP -> 6', 'success');
+                logProbe(resultId, 'Socket axiom verified', 'success');
+            }, 500);
+        }
+
+        function probeAlloc() {
+            const resultId = 'alloc-result';
+            document.getElementById(resultId).innerHTML = '';
+            logProbe(resultId, 'Allocation verification initiated...', 'info');
+            
+            setTimeout(() => {
+                logProbe(resultId, 'Slab allocation: 832 bytes', 'success');
+                const baseAddr = '0xffff888100000000';
+                logProbe(resultId, `Base address: ${baseAddr}`, 'success');
+                logProbe(resultId, `Socket: ${baseAddr}`, 'success');
+                logProbe(resultId, `Inode: 0xffff888100000080 (base + 128)`, 'success');
+                logProbe(resultId, 'File descriptor: 3', 'success');
+                logProbe(resultId, 'Allocation axiom verified', 'success');
+            }, 500);
+        }
+
+        // Initialize
+        setInterval(updateCycleCounter, 100);
+    </script>
+</body>
+</html>

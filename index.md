@@ -2,6 +2,14 @@
 layout: default
 ---
 
+## [START AXIOMATIC KERNEL TRACING](axiomatic_kernel_tracing.html)
+
+### [LIVE KERNEL PROBE INTERFACE](live_probe.html)
+
+### [MEMORY LAYOUT EXPLORER](memory_explorer.html)
+
+### [PERFORMANCE COUNTERS & CYCLE ANALYSIS](performance_counters.html)
+
 <pre>
 [ 0.000000] <a href="lessons/06_preprocessor_truth.md">PREPROCESSOR</a> : #include &lt;sys/socket.h&gt; :: AF_INET -> 2
 [ 0.000001] <a href="lessons/06_preprocessor_truth.md">PREPROCESSOR</a> : #include &lt;sys/socket.h&gt; :: SOCK_STREAM -> 1

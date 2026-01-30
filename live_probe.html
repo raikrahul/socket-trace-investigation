@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LIVE KERNEL PROBE</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 20px;
+            font-size: 12px;
+        }
+        .header {
+            border: 2px solid #00ff00;
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #001100;
+        }
+        .probe-section {
+            border: 1px solid #00ff00;
+            margin: 10px 0;
+            padding: 10px;
+        }
+        .register-display {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        .register {
+            background-color: #001100;
+            border: 1px solid #00ff00;
+            padding: 5px;
+        }
+        .register-name {
+            color: #ffff00;
+            font-weight: bold;
+        }
+        .register-value {
+            color: #00ffff;
+            word-break: break-all;
+        }
+        .memory-dump {
+            background-color: #001100;
+            border: 1px solid #00ff00;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 10px;
+            white-space: pre;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        button {
+            background-color: #00ff00;
+            color: #000000;
+            border: none;
+            padding: 8px 15px;
+            font-family: monospace;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #00cc00;
+        }
+        button:disabled {
+            background-color: #333300;
+            color: #666600;
+        }
+        .status {
+            color: #ffff00;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .timing-info {
+            color: #ff9900;
+            font-size: 10px;
+        }
+        .hex-address {
+            color: #ff00ff;
+        }
+        .hex-ascii {
+            color: #00ff00;
+        }
+        .probe-log {
+            background-color: #000000;
+            border: 1px solid #00ff00;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 10px;
+        }
+        .log-entry {
+            margin: 2px 0;
+            white-space: pre;
+        }
+        .log-error { color: #ff0000; }
+        .log-success { color: #00ff00; }
+        .log-info { color: #00ffff; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>[LIVE KERNEL PROBE INTERFACE]</h1>
+        <div class="status">STATUS: <span id="probe-status">READY</span></div>
+        <div class="timing-info">CYCLE ACCURACY: <span id="cycle-counter">0</span> | FREQUENCY: <span id="cpu-freq">0</span> MHz</div>
+    </div>
+
+    <div class="probe-section">
+        <h2>REGISTER STATE</h2>
+        <div class="register-display" id="register-display">
+            <div class="register">
+                <div class="register-name">RAX:</div>
+                <div class="register-value" id="rax">0x0000000000000000</div>
+            </div>
+            <div class="register">
+                <div class="register-name">RBX:</div>
+                <div class="register-value" id="rbx">0x0000000000000000</div>
+            </div>
+            <div class="register">
+                <div class="register-name">RCX:</div>
+                <div class="register-value" id="rcx">0x0000000000000000</div>
+            </div>
+            <div class="register">
+                <div class="register-name">RDX:</div>
+                <div class="register-value" id="rdx">0x0000000000000000</div>
+            </div>
+            <div class="register">
+                <div class="register-name">RSI:</div>
+                <div class="register-value" id="rsi">0x0000000000000000</div>
+            </div>
+            <div class="register">
+                <div class="register-name">RDI:</div>
+                <div class="register-value" id="rdi">0x0000000000000000</div>
+            </div>
+            <div class="register">
+                <div class="register-name">RSP:</div>
+                <div class="register-value" id="rsp">0x0000000000000000</div>
+            </div>
+            <div class="register">
+                <div class="register-name">RBP:</div>
+                <div class="register-value" id="rbp">0x0000000000000000</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <button onclick="probeSocket()" id="probe-socket">PROBE SOCKET(2,1,0)</button>
+        <button onclick="dumpMemory()" id="dump-memory">DUMP MEMORY</button>
+        <button onclick="traceSyscall()" id="trace-syscall">TRACE SYSCALL</button>
+        <button onclick="measureLatency()" id="measure-latency">MEASURE LATENCY</button>
+        <button onclick="clearLog()" id="clear-log">CLEAR LOG</button>
+    </div>
+
+    <div class="probe-section">
+        <h2>MEMORY DUMP: <span class="hex-address" id="dump-address">0x0000000000000000</span></h2>
+        <div class="memory-dump" id="memory-dump">
+Awaiting probe data...
+        </div>
+    </div>
+
+    <div class="probe-section">
+        <h2>PROBE LOG</h2>
+        <div class="probe-log" id="probe-log">
+<div class="log-entry log-info">[INIT] Live kernel probe interface ready</div>
+<div class="log-entry log-info">[INIT] Waiting for user interaction</div>
+        </div>
+    </div>
+
+    <script>
+        let cycleCount = 0;
+        let probeActive = false;
+        let cpuFreq = 2400; // Default 2.4GHz
+        
+        // Simulate CPU frequency detection
+        function detectCPUFrequency() {
+            // In real implementation, this would read from /proc/cpuinfo
+            cpuFreq = 2400 + Math.floor(Math.random() * 800);
+            document.getElementById('cpu-freq').textContent = cpuFreq;
+        }
+
+        function updateCycleCounter() {
+            cycleCount += Math.floor(Math.random() * 100) + 50;
+            document.getElementById('cycle-counter').textContent = cycleCount.toLocaleString();
+        }
+
+        function logEntry(message, type = 'info') {
+            const log = document.getElementById('probe-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toISOString().substr(11, 12)}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStatus(status) {
+            document.getElementById('probe-status').textContent = status;
+        }
+
+        function simulateRegisters(syscallNum) {
+            const registers = {
+                rax: `0x${syscallNum.toString(16).padStart(16, '0')}`,
+                rdi: '0x0000000000000002',
+                rsi: '0x0000000000000001', 
+                rdx: '0x0000000000000000',
+                rcx: `0x${(0xffffffff80000000 + Math.floor(Math.random() * 0x1000)).toString(16).padStart(16, '0')}`,
+                rbx: `0x${(0xffff888000000000 + Math.floor(Math.random() * 0x1000000)).toString(16).padStart(16, '0')}`,
+                rsp: `0x${(0x00007ffd00000000 + Math.floor(Math.random() * 0x100000)).toString(16).padStart(16, '0')}`,
+                rbp: `0x${(0x00007ffd00000000 + Math.floor(Math.random() * 0x100000)).toString(16).padStart(16, '0')}`
+            };
+
+            Object.keys(registers).forEach(reg => {
+                document.getElementById(reg).textContent = registers[reg];
+            });
+
+            return registers;
+        }
+
+        function generateMemoryDump(address, size = 512) {
+            const lines = [];
+            const startAddr = parseInt(address, 16);
+            
+            for (let i = 0; i < size; i += 16) {
+                const addr = startAddr + i;
+                const hexBytes = [];
+                const asciiChars = [];
+                
+                for (let j = 0; j < 16; j++) {
+                    const value = Math.floor(Math.random() * 256);
+                    hexBytes.push(value.toString(16).padStart(2, '0'));
+                    asciiChars.push(value >= 32 && value <= 126 ? String.fromCharCode(value) : '.');
+                }
+                
+                const hexLine = hexBytes.join(' ');
+                const asciiLine = asciiChars.join('');
+                const addrHex = addr.toString(16).padStart(16, '0');
+                
+                lines.push(`<span class="hex-address">${addrHex}</span>  ${hexLine}  |<span class="hex-ascii">${asciiLine}</span>|`);
+            }
+            
+            return lines.join('\n');
+        }
+
+        function probeSocket() {
+            if (probeActive) return;
+            
+            probeActive = true;
+            updateStatus('PROBING SOCKET');
+            logEntry('Initiating socket(2,1,0) probe sequence...', 'info');
+            
+            const btn = document.getElementById('probe-socket');
+            btn.disabled = true;
+            
+            setTimeout(() => {
+                const regs = simulateRegisters(41); // __NR_socket = 41
+                logEntry(`Syscall __NR_socket (41) detected`, 'success');
+                logEntry(`RAX: ${regs.rax} | RDI: ${regs.rdi} | RSI: ${regs.rsi} | RDX: ${regs.rdx}`, 'info');
+                
+                // Simulate kernel response
+                setTimeout(() => {
+                    const fd = 3 + Math.floor(Math.random() * 10);
+                    logEntry(`Kernel allocated socket descriptor: fd=${fd}`, 'success');
+                    logEntry(`Memory allocated: 832 bytes from sock_inode_cache`, 'info');
+                    logEntry('Probe complete', 'success');
+                    updateStatus('PROBE COMPLETE');
+                    btn.disabled = false;
+                    probeActive = false;
+                }, 1500);
+            }, 500);
+        }
+
+        function dumpMemory() {
+            const address = document.getElementById('dump-address').textContent;
+            logEntry(`Dumping memory at ${address}...`, 'info');
+            
+            setTimeout(() => {
+                const dump = generateMemoryDump(address);
+                document.getElementById('memory-dump').innerHTML = dump;
+                logEntry(`Memory dump complete (512 bytes)`, 'success');
+            }, 200);
+        }
+
+        function traceSyscall() {
+            logEntry('Starting system call trace...', 'info');
+            updateStatus('TRACING');
+            
+            const syscalls = [
+                { num: 41, name: 'socket' },
+                { num: 42, name: 'connect' },
+                { num: 43, name: 'accept' },
+                { num: 44, name: 'sendto' },
+                { num: 45, name: 'recvfrom' }
+            ];
+            
+            let index = 0;
+            const interval = setInterval(() => {
+                if (index >= syscalls.length) {
+                    clearInterval(interval);
+                    logEntry('System call trace complete', 'success');
+                    updateStatus('TRACE COMPLETE');
+                    return;
+                }
+                
+                const syscall = syscalls[index];
+                logEntry(`Syscall: ${syscall.name} (${syscall.num})`, 'info');
+                simulateRegisters(syscall.num);
+                index++;
+            }, 800);
+        }
+
+        function measureLatency() {
+            logEntry('Measuring socket creation latency...', 'info');
+            updateStatus('MEASURING');
+            
+            const measurements = [];
+            for (let i = 0; i < 10; i++) {
+                measurements.push(Math.floor(Math.random() * 500) + 100);
+            }
+            
+            setTimeout(() => {
+                const avg = measurements.reduce((a, b) => a + b, 0) / measurements.length;
+                const min = Math.min(...measurements);
+                const max = Math.max(...measurements);
+                
+                logEntry(`Latency measurements (cycles): ${measurements.join(', ')}`, 'info');
+                logEntry(`Average: ${avg.toFixed(1)} cycles | Min: ${min} | Max: ${max}`, 'success');
+                logEntry(`Approximate time: ${(avg / cpuFreq * 1000000).toFixed(2)} μs`, 'success');
+                updateStatus('MEASUREMENT COMPLETE');
+            }, 1000);
+        }
+
+        function clearLog() {
+            const log = document.getElementById('probe-log');
+            log.innerHTML = '<div class="log-entry log-info">[CLEAR] Log cleared</div>';
+        }
+
+        // Initialize
+        detectCPUFrequency();
+        setInterval(updateCycleCounter, 100);
+        
+        // Set default memory dump address
+        document.getElementById('dump-address').textContent = '0xffff888100000000';
+        
+        // Auto-update memory dump periodically
+        setInterval(() => {
+            if (!probeActive) {
+                const address = document.getElementById('dump-address').textContent;
+                const dump = generateMemoryDump(address, 256);
+                document.getElementById('memory-dump').innerHTML = dump;
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

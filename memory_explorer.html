@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>INTERACTIVE MEMORY LAYOUT EXPLORER</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            font-size: 12px;
+        }
+        .header {
+            border: 2px solid #00ff00;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #001100;
+            text-align: center;
+        }
+        .explorer-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+        .control-panel {
+            background-color: #001100;
+            border: 1px solid #00ff00;
+            padding: 15px;
+            height: fit-content;
+        }
+        .memory-viewport {
+            background-color: #000011;
+            border: 1px solid #00ff00;
+            padding: 15px;
+        }
+        .struct-selector {
+            margin-bottom: 15px;
+        }
+        .struct-btn {
+            background-color: #000000;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 10px;
+            width: 100%;
+            margin: 2px 0;
+            display: block;
+        }
+        .struct-btn:hover {
+            background-color: #003300;
+        }
+        .struct-btn.active {
+            background-color: #00ff00;
+            color: #000000;
+            font-weight: bold;
+        }
+        .memory-grid {
+            font-family: monospace;
+            font-size: 9px;
+            line-height: 1.2;
+            white-space: pre;
+            overflow-x: auto;
+            background-color: #000000;
+            padding: 10px;
+            border: 1px solid #333;
+        }
+        .hex-address {
+            color: #ff00ff;
+            display: inline-block;
+            width: 120px;
+        }
+        .hex-bytes {
+            color: #00ffff;
+            display: inline-block;
+            width: 300px;
+        }
+        .ascii-repr {
+            color: #ffff00;
+        }
+        .field-highlight {
+            background-color: #ffff00;
+            color: #000000;
+            font-weight: bold;
+        }
+        .offset-marker {
+            color: #ff9900;
+            font-weight: bold;
+        }
+        .info-panel {
+            background-color: #001100;
+            border: 1px solid #00ff00;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .field-info {
+            margin: 5px 0;
+            font-size: 10px;
+        }
+        .field-name {
+            color: #ffff00;
+            font-weight: bold;
+        }
+        .field-size {
+            color: #00ffff;
+        }
+        .field-offset {
+            color: #ff00ff;
+        }
+        .zoom-controls {
+            margin-top: 10px;
+        }
+        .zoom-btn {
+            background-color: #00ff00;
+            color: #000000;
+            border: none;
+            padding: 5px 10px;
+            font-family: monospace;
+            cursor: pointer;
+            margin: 2px;
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MEMORY LAYOUT EXPLORER</h1>
+        <h2>INTERACTIVE STRUCTURE VISUALIZATION</h2>
+    </div>
+
+    <div class="explorer-container">
+        <div class="control-panel">
+            <div class="struct-selector">
+                <h3>SELECT STRUCTURE</h3>
+                <button class="struct-btn active" onclick="showStruct('socket_alloc')">socket_alloc</button>
+                <button class="struct-btn" onclick="showStruct('tcp_sock')">tcp_sock</button>
+                <button class="struct-btn" onclick="showStruct('file_descriptor')">file_descriptor</button>
+                <button class="struct-btn" onclick="showStruct('slab_cache')">slab_cache</button>
+            </div>
+
+            <div class="zoom-controls">
+                <h3>MEMORY SCALE</h3>
+                <button class="zoom-btn" onclick="zoomIn()">ZOOM IN</button>
+                <button class="zoom-btn" onclick="zoomOut()">ZOOM OUT</button>
+                <button class="zoom-btn" onclick="resetZoom()">RESET</button>
+            </div>
+
+            <div class="info-panel" id="field-info">
+                <h3>FIELD INFORMATION</h3>
+                <div id="selected-field">Hover over memory to see field details</div>
+            </div>
+        </div>
+
+        <div class="memory-viewport">
+            <div id="memory-display" class="memory-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentStruct = 'socket_alloc';
+        let zoomLevel = 1;
+        let baseAddress = 0xffff888100000000;
+
+        const structures = {
+            socket_alloc: {
+                size: 768,
+                fields: [
+                    { name: 'socket', offset: 0, size: 128, type: 'struct socket' },
+                    { name: 'vfs_inode', offset: 128, size: 624, type: 'struct inode' },
+                    { name: 'padding', offset: 752, size: 16, type: 'cache alignment' }
+                ]
+            },
+            tcp_sock: {
+                size: 2360,
+                fields: [
+                    { name: '__sk_common', offset: 0, size: 776, type: 'struct sock' },
+                    { name: 'inet_connection_sock', offset: 776, size: 184, type: 'struct inet_connection_sock' },
+                    { name: 'inet_sock', offset: 960, size: 176, type: 'struct inet_sock' },
+                    { name: 'tcp_sock_specific', offset: 1136, size: 1224, type: 'TCP-specific fields' }
+                ]
+            },
+            file_descriptor: {
+                size: 64,
+                fields: [
+                    { name: 'file_operations', offset: 0, size: 8, type: 'void *' },
+                    { name: 'private_data', offset: 8, size: 8, type: 'void *' },
+                    { name: 'f_pos', offset: 16, size: 8, type: 'loff_t' },
+                    { name: 'f_flags', offset: 24, size: 4, type: 'unsigned int' },
+                    { name: 'f_count', offset: 28, size: 4, type: 'atomic_t' }
+                ]
+            },
+            slab_cache: {
+                size: 832,
+                fields: [
+                    { name: 'user_data', offset: 0, size: 768, type: 'socket_alloc' },
+                    { name: 'slab_metadata', offset: 768, size: 64, type: 'slab allocator' }
+                ]
+            }
+        };
+
+        function generateHexDump(address, size, struct) {
+            let lines = [];
+            let bytesPerLine = 16;
+            
+            for (let i = 0; i < size; i += bytesPerLine * zoomLevel) {
+                const currentAddr = address + i;
+                const addrHex = currentAddr.toString(16).padStart(16, '0');
+                
+                let hexBytes = [];
+                let asciiChars = [];
+                let fieldInLine = null;
+                
+                for (let j = 0; j < bytesPerLine * zoomLevel && (i + j) < size; j++) {
+                    const offset = i + j;
+                    const byte = generateByteForOffset(offset, struct);
+                    
+                    hexBytes.push(byte);
+                    
+                    // Check if we're in a field
+                    const field = struct.fields.find(f => offset >= f.offset && offset < f.offset + f.size);
+                    if (field && !fieldInLine) {
+                        fieldInLine = field;
+                    }
+                    
+                    const char = byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
+                    asciiChars.push(char);
+                }
+                
+                // Format hex bytes
+                const hexString = hexBytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
+                
+                // Highlight if in a field
+                let lineClass = '';
+                if (fieldInLine) {
+                    lineClass = 'field-highlight';
+                }
+                
+                const asciiString = asciiChars.join('');
+                const offsetMarker = struct.fields.find(f => i === f.offset) ? 
+                    `<span class="offset-marker">[${struct.fields.find(f => i === f.offset)?.name}]</span>` : '';
+                
+                lines.push(
+                    `<span class="hex-address">${addrHex}</span> ` +
+                    `<span class="${lineClass}">${hexString}</span> ` +
+                    `<span class="ascii-repr">${asciiString}</span> ${offsetMarker}`
+                );
+            }
+            
+            return lines.join('\n');
+        }
+
+        function generateByteForOffset(offset, struct) {
+            // Generate deterministic but realistic-looking data
+            const field = struct.fields.find(f => offset >= f.offset && offset < f.offset + f.size);
+            
+            if (field) {
+                const fieldOffset = offset - field.offset;
+                
+                // Generate patterns based on field type
+                if (field.name.includes('socket')) {
+                    return 0x42; // Pattern for socket
+                } else if (field.name.includes('inode')) {
+                    return 0x49; // Pattern for inode
+                } else if (field.name.includes('private_data')) {
+                    return 0x80; // Pointer-like value
+                } else if (field.name.includes('metadata')) {
+                    return 0xAA; // Metadata pattern
+                }
+            }
+            
+            // Default pseudo-random but deterministic
+            return (offset * 7 + 13) % 256;
+        }
+
+        function showStruct(structName) {
+            currentStruct = structName;
+            
+            // Update button states
+            document.querySelectorAll('.struct-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Generate memory display
+            updateMemoryDisplay();
+        }
+
+        function updateMemoryDisplay() {
+            const struct = structures[currentStruct];
+            const display = document.getElementById('memory-display');
+            const hexDump = generateHexDump(baseAddress, struct.size, struct);
+            display.innerHTML = hexDump;
+            
+            // Add hover event listeners
+            display.innerHTML = display.innerHTML.replace(
+                /<span class="hex-address">([^<]+)<\/span>/g,
+                '<span class="hex-address" onmouseover="showFieldInfo($1)" onmouseout="clearFieldInfo()">$1</span>'
+            );
+        }
+
+        function showFieldInfo(address) {
+            const struct = structures[currentStruct];
+            const offset = parseInt(address, 16) - baseAddress;
+            const field = struct.fields.find(f => offset >= f.offset && offset < f.offset + f.size);
+            
+            const infoDiv = document.getElementById('selected-field');
+            if (field) {
+                infoDiv.innerHTML = `
+                    <div class="field-info">
+                        <span class="field-name">Field:</span> ${field.name}<br>
+                        <span class="field-type">Type:</span> ${field.type}<br>
+                        <span class="field-offset">Offset:</span> 0x${field.offset.toString(16)} (${field.offset})<br>
+                        <span class="field-size">Size:</span> ${field.size} bytes<br>
+                        <span class="field-range">Range:</span> 0x${(baseAddress + field.offset).toString(16)} - 0x${(baseAddress + field.offset + field.size).toString(16)}
+                    </div>
+                `;
+            } else {
+                infoDiv.innerHTML = '<div class="field-info">No field at this offset</div>';
+            }
+        }
+
+        function clearFieldInfo() {
+            document.getElementById('selected-field').innerHTML = 'Hover over memory to see field details';
+        }
+
+        function zoomIn() {
+            zoomLevel = Math.min(zoomLevel * 2, 8);
+            updateMemoryDisplay();
+        }
+
+        function zoomOut() {
+            zoomLevel = Math.max(zoomLevel / 2, 1);
+            updateMemoryDisplay();
+        }
+
+        function resetZoom() {
+            zoomLevel = 1;
+            updateMemoryDisplay();
+        }
+
+        // Initialize display
+        updateMemoryDisplay();
+    </script>
+</body>
+</html>
