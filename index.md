@@ -2,13 +2,24 @@
 layout: default
 ---
 
-## [START AXIOMATIC KERNEL TRACING](axiomatic_kernel_tracing.html)
+## THE CHRONOLOGICAL KERNEL
 
-### [LIVE KERNEL PROBE INTERFACE](live_probe.html)
+### [ERA I: DESIGN TIME (Way before you wrote socket)](lesson_design.html)
+The Static Geometry of Truth.
 
-### [MEMORY LAYOUT EXPLORER](memory_explorer.html)
+### [ERA II: COMPILE TIME (When kernel got compiled)](lesson_compile.html)
+The Freezing of Offsets and Logic.
 
-### [PERFORMANCE COUNTERS & CYCLE ANALYSIS](performance_counters.html)
+### [ERA III: BOOT TIME (When kernel got booted)](lesson_boot.html)
+The Awakening of the Factory.
+
+### [ERA IV: RUNTIME (And only then did someone call socket)](lesson_runtime.html)
+The Execution of the Plan.
+
+---
+### [PROOF DASHBOARD](axiomatic_kernel_tracing.html)
+Live Axiomatic Data.
+
 
 <pre>
 [ 0.000000] <a href="lessons/06_preprocessor_truth.md">PREPROCESSOR</a> : #include &lt;sys/socket.h&gt; :: AF_INET -> 2
