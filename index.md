@@ -4,8 +4,8 @@ layout: default
 
 ## THE CHRONOLOGICAL KERNEL
 
-### [ERA I: DESIGN TIME (Way before you wrote socket)](lesson_design.html)
-The Static Geometry of Truth.
+### [00. BOOT TRACE: THE INITIALIZATION](lesson_design.html)
+Tracing `sock_init` instruction-by-instruction.
 
 ### [ERA II: COMPILE TIME (When kernel got compiled)](lesson_compile.html)
 The Freezing of Offsets and Logic.

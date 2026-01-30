@@ -3,12 +3,61 @@ layout: default
 title: "02_BOOT_TIME"
 ---
 
-# 02. BOOT TIME: NUMERICAL REASONING
+# 02. BOOT TIME: THE COMPLETE TRACE
 
 ## ABSTRACT
-This document analyzes the execution path of `sock_init`, deriving not just *what* happens, but *why* specific architectural decisions were made. It connects low-level memory operations to high-level system stability constraints.
+This document analyzes the complete execution path of `sock_init`, covering `net_sysctl_init`, `skb_init`, `register_filesystem`, and `kern_mount`. It connects memory allocations and architectural decisions to system stability constraints.
 
-## 1. FILESYSTEM REGISTRATION
+## 0. THE PRECURSOR: NET SYSCTL INIT
+
+**Objective**: Trace `net_sysctl_init()` at Line 3273.
+**Context**: `net/sysctl_net.c`.
+
+```c
+__init int net_sysctl_init(void)
+{
+    // 1. REGISTER ROOT "/proc/sys/net"
+    net_header = register_sysctl_sz("net", empty, 0);
+    // Op: Allocation of ctl_table_header.
+    // Rationale: Creating an empty directory acts as a placeholder.
+    //            This prevents race conditions where sub-sysctls (ipv4, core)
+    //            try to register under "net" before it exists.
+
+    // 2. REGISTER PERNET SUBSYS
+    ret = register_pernet_subsys(&sysctl_pernet_ops);
+    // Op: Adds 'sysctl_net_init' to the per-namespace initializer list.
+    // Rationale: Linux supports Network Namespaces (Containers).
+    //            Every time a new Namespace is created, 'sysctl_net_init' will fire,
+    //            creating a private /proc/sys/net instance for that container.
+}
+```
+
+## 1. THE FOUNDATION: SKBUFF INIT
+
+**Objective**: Trace `skb_init()` at Line 3280.
+**Context**: `net/core/skbuff.c` (Line 4905).
+
+```c
+void __init skb_init(void)
+{
+    // 1. SKBUFF HEAD CACHE
+    skbuff_cache = kmem_cache_create_usercopy("skbuff_head_cache",
+                          sizeof(struct sk_buff), ...);
+    // Size: 224 bytes (approx, depends on config).
+    // Rationale: The 'sk_buff' is the metadata wrapper for every packet.
+    //            We need a dedicated, high-performance SLAB cache because
+    //            networking creates/destroys millions of these per second.
+    //            'SLAB_PANIC' ensures boot fails if we can't allocate this.
+
+    // 2. FCLONE CACHE
+    skbuff_fclone_cache = kmem_cache_create("skbuff_fclone_cache", ...);
+    // Rationale: Fast Cloning. 
+    //            Optimized allocator for cloned packets (multicast/sniffers),
+    //            allocating pairs of sk_buffs efficiently.
+}
+```
+
+## 2. FILESYSTEM REGISTRATION
 
 **Objective**: Trace `register_filesystem(&sock_fs_type)` at Line 3288.
 **Context**: `fs/filesystems.c`.
@@ -87,7 +136,7 @@ int register_filesystem(struct file_system_type * fs)
 +------------------------+
 ```
 
-## 2. MOUNT POINT ANCHORING
+## 3. MOUNT POINT ANCHORING
 
 **Objective**: Trace `sock_mnt = kern_mount(&sock_fs_type)` at Line 3291.
 **Context**: `fs/namespace.c`.
@@ -156,7 +205,7 @@ struct vfsmount *vfs_kern_mount(struct file_system_type *type, ...)
            +--------------------------+
 ```
 
-## 3. ALGORITHMIC REASONING
+## 4. ALGORITHMIC REASONING
 
 **Problem**: Is a Linear Scan O(N) acceptable for filesystem registration?
 
