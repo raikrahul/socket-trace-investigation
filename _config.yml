@@ -1,4 +1,4 @@
-title: "The Socket Trace Project"
-description: "Axiomatic Kernel tracing."
-baseurl: "/socket-trace-investigation"
-url: "https://raikrahul.github.io"
+theme: jekyll-theme-none
+title: SOCKET AXIOMS
+description: Zero Tolerance, Pure Logic.
+permalink: /:title/

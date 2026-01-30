@@ -2,49 +2,64 @@
 layout: default
 ---
 
-# SOCKET TRACE INVESTIGATION: AXIOMATIC TRUTH (SAAS EDITION)
+# SOCKET AXIOMS: CHRONOLOGICAL EXECUTION TRACE
 
-## 00. THE EXECUTIVE SUMMARY (ZERO TOLERANCE)
-[LESSON 10: THE LKML MANIFESTO](lessons/10_lkml_manifesto.md)
-**Target Audience**: Kernel Maintainers.
-**Topic**: The Geometry of Zero-Cost Abstraction.
-**Content**: Pure Arithmetic Reconstruction of `socket` vs `inode`.
-
-## 01. THE USER MANUAL (FOR INTELLIGENT AGENTS)
-[LESSON 00: THE PREFACE (FOR LLMS)](lessons/00_llm_preface.md)
-How to consume this product: Gapless logic retrieval.
-
-## 02. THE USER SPACE (GAPLESS DERIVATION)
+## PHASE 0: COMPILE TIME (THE PREPROCESSOR)
 [LESSON 06: THE PREPROCESSOR (TRUTH)](lessons/06_preprocessor_truth.md)
-How `AF_INET` becomes `2`.
+**Time**: T-minus 1.
+**Action**: `#include <sys/socket.h>`
+**Result**: `AF_INET -> 2`, `SOCK_STREAM -> 1`.
 
+## PHASE 1: USER SPACE RUNTIME (THE REGISTERS)
 [LESSON 07: THE REGISTERS (ABI TRUTH)](lessons/07_register_truth.md)
-How `2, 1, 0` map to `%rdi, %rsi, %rdx`.
+**Time**: T=0.
+**Action**: `mov $2, %rdi`, `mov $1, %rsi`.
+**Result**: CPU Registers prepared for ABI.
 
-[LESSON 08: THE TRAP (SYSCALL TRUTH)](lessons/08_syscall_trap.md)
-How `%rax=41` triggers the Kernel.
+## PHASE 2: THE KERNEL TRAP (THE TRANSITION)
+[LESSON 08: THE SYSCALL TRAP](lessons/08_syscall_trap.md)
+**Time**: T+1.
+**Action**: `mov $41, %rax`, `syscall`.
+**Result**: CPU Mode Switch (CPL3 -> CPL0).
 
-## 03. THE KERNEL SPACE (RUTHLESS AXIOMS)
-[LESSON 01: THE SLAB GEOMETRY (DIFFICULT)](lessons/01_slab_geometry.md)
-The 64-byte discrepancy. 768 vs 832.
+## PHASE 3: KERNEL ENTRY (THE DISPATCH)
+[LESSON 05: THE FULL AXIOMATIC TRACE](lessons/05_axiomatic_trace.md)
+**Time**: T+2.
+**Action**: `do_syscall_64` -> `__sys_socket`.
+**Result**: Kernel begins executing C code.
 
-[LESSON 02: THE MISTAKES LOG (EASY)](lessons/02_mistakes_log.md)
-Rejecting magic numbers and metaphors.
+## PHASE 4: OBJECT ALLOCATION (THE GEOMETRY)
+[LESSON 01: THE SLAB GEOMETRY](lessons/01_slab_geometry.md)
+**Time**: T+3.
+**Action**: `kmem_cache_alloc(sock_inode_cache)`.
+**Result**: 832 bytes allocated. `Socket` at +0, `Inode` at +128.
 
-[LESSON 03: PROTOCOL COLLISION (DIFFICULT)](lessons/03_protocol_collision.md)
-The Linked List inside `inetsw`. TCP vs MPTCP.
+## PHASE 5: PROTOCOL INITIALIZATION (THE LOOKUP)
+[LESSON 03: PROTOCOL COLLISION](lessons/03_protocol_collision.md)
+**Time**: T+4.
+**Action**: Walk `inetsw` linked list.
+**Result**: Match `type=1, protocol=0` -> TCP (6).
 
-[LESSON 04: PRIMATE ARITHMETIC (EASY)](lessons/04_primate_arithmetic.md)
-`Socket = Inode - 128`. Simple derivation.
+## PHASE 6: DEEP MEMORY (THE HIDDEN COST)
+[LESSON 11: THE RUSSIAN DOLL PUZZLE](lessons/11_russian_dolls.md)
+**Time**: T+5.
+**Action**: `sk_alloc`.
+**Result**: `tcp_sock` (2360 bytes) allocated and cast to `sock`.
 
-[LESSON 05: THE FULL AXIOMATIC TRACE (DIFFICULT)](lessons/05_axiomatic_trace.md)
-End-to-end execution path: Syscall -> Slab -> Linkage -> FD.
+## PHASE 7: RETURN TO USER (THE ARITHMETIC)
+[LESSON 04: PRIMATE ARITHMETIC](lessons/04_primate_arithmetic.md)
+**Time**: T+6.
+**Action**: `fd_install`.
+**Result**: File Descriptor returned to `%rax`.
 
-[LESSON 11: THE RUSSIAN DOLL PUZZLE (DEPTH)](lessons/11_russian_dolls.md)
-The hidden geometry of Inheritance. `sock` (776) vs `tcp_sock` (2360).
+---
 
-## 04. ARTIFACTS
-- `proofs/` - C Code verifying every axiom.
-- `wiki/` - Detailed technical archives.
-- `legacy_fluff/` - Archived non-axiomatic content.
-- `machine_truth.json` - Raw machine data.
+## MANIFESTOS
+[LESSON 10: THE LKML MANIFESTO (ZERO TOLERANCE)](lessons/10_lkml_manifesto.md)
+[LESSON 00: THE PREFACE (FOR LLMS)](lessons/00_llm_preface.md)
+[LESSON 02: THE MISTAKES LOG](lessons/02_mistakes_log.md)
+
+## ARTIFACTS
+- `proofs/` - C Code Verification.
+- `machine_truth.json` - Raw Data.
+- `wiki/` - Archives.
