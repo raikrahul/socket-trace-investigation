@@ -40,7 +40,11 @@ The Linked List inside `inetsw`. TCP vs MPTCP.
 [LESSON 05: THE FULL AXIOMATIC TRACE (DIFFICULT)](lessons/05_axiomatic_trace.md)
 End-to-end execution path: Syscall -> Slab -> Linkage -> FD.
 
+[LESSON 11: THE RUSSIAN DOLL PUZZLE (DEPTH)](lessons/11_russian_dolls.md)
+The hidden geometry of Inheritance. `sock` (776) vs `tcp_sock` (2360).
+
 ## 04. ARTIFACTS
 - `proofs/` - C Code verifying every axiom.
 - `wiki/` - Detailed technical archives.
 - `legacy_fluff/` - Archived non-axiomatic content.
+- `machine_truth.json` - Raw machine data.

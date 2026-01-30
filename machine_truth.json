@@ -16,12 +16,15 @@
             "socket": 128,
             "inode": 624,
             "socket_alloc": 768,
-            "sock": 1392
+            "sock": 776,
+            "inet_sock": 960,
+            "inet_connection_sock": 1136,
+            "tcp_sock": 2360
         },
         "offsets": {
-            "socket_file": 288,
+            "socket_file": 16,
             "socket_sk": 24,
-            "sock_sk_socket": 40,
+            "sock_sk_socket": 288,
             "socket_alloc_vfs_inode": 128,
             "socket_alloc_socket": 0
         },
