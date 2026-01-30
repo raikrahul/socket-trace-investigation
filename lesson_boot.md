@@ -3,14 +3,13 @@ layout: default
 title: "02_BOOT_TIME"
 ---
 
-# 02. BOOT TIME: THE COMPLETE TRACE
+# 02. BOOT TIME: SYSTEM INITIALIZATION
 
-## ABSTRACT
-This document analyzes the complete execution path of `sock_init`, covering `net_sysctl_init`, `skb_init`, `register_filesystem`, and `kern_mount`. It connects memory allocations and architectural decisions to system stability constraints.
+This document traces the execution path of `sock_init`, covering `net_sysctl_init`, `skb_init`, `register_filesystem`, and `kern_mount`.
 
-## 0. THE PRECURSOR: NET SYSCTL INIT
+## 1. NET SYSCTL INIT
 
-**Objective**: Trace `net_sysctl_init()` at Line 3273.
+**Objective**: Trace `net_sysctl_init()` (Line 3273 `net/socket.c`).
 **Context**: `net/sysctl_net.c`.
 
 ```c
@@ -18,24 +17,20 @@ __init int net_sysctl_init(void)
 {
     // 1. REGISTER ROOT "/proc/sys/net"
     net_header = register_sysctl_sz("net", empty, 0);
-    // Op: Allocation of ctl_table_header.
-    // Rationale: Creating an empty directory acts as a placeholder.
-    //            This prevents race conditions where sub-sysctls (ipv4, core)
-    //            try to register under "net" before it exists.
+    // Purpose: Creates the directory placeholder.
+    // Prevents race conditions during sub-system registration.
 
     // 2. REGISTER PERNET SUBSYS
     ret = register_pernet_subsys(&sysctl_pernet_ops);
-    // Op: Adds 'sysctl_net_init' to the per-namespace initializer list.
-    // Rationale: Linux supports Network Namespaces (Containers).
-    //            Every time a new Namespace is created, 'sysctl_net_init' will fire,
-    //            creating a private /proc/sys/net instance for that container.
+    // Purpose: Hooks 'sysctl_net_init' into Namespace creation.
+    // Ensures every new container gets its own /proc/sys/net.
 }
 ```
 
-## 1. THE FOUNDATION: SKBUFF INIT
+## 2. SKBUFF INIT
 
-**Objective**: Trace `skb_init()` at Line 3280.
-**Context**: `net/core/skbuff.c` (Line 4905).
+**Objective**: Trace `skb_init()` (Line 3280 `net/socket.c`).
+**Context**: `net/core/skbuff.c`.
 
 ```c
 void __init skb_init(void)
@@ -43,79 +38,55 @@ void __init skb_init(void)
     // 1. SKBUFF HEAD CACHE
     skbuff_cache = kmem_cache_create_usercopy("skbuff_head_cache",
                           sizeof(struct sk_buff), ...);
-    // Size: 224 bytes (approx, depends on config).
-    // Rationale: The 'sk_buff' is the metadata wrapper for every packet.
-    //            We need a dedicated, high-performance SLAB cache because
-    //            networking creates/destroys millions of these per second.
-    //            'SLAB_PANIC' ensures boot fails if we can't allocate this.
+    // Size: ~224 bytes.
+    // Purpose: Metadata wrapper for network packets.
+    // Critical Path: Must succeed (SLAB_PANIC) or kernel halts.
 
     // 2. FCLONE CACHE
     skbuff_fclone_cache = kmem_cache_create("skbuff_fclone_cache", ...);
-    // Rationale: Fast Cloning. 
-    //            Optimized allocator for cloned packets (multicast/sniffers),
-    //            allocating pairs of sk_buffs efficiently.
+    // Purpose: Optimized allocator for cloned packets.
 }
 ```
 
-## 2. FILESYSTEM REGISTRATION
+## 3. FILESYSTEM REGISTRATION
 
-**Objective**: Trace `register_filesystem(&sock_fs_type)` at Line 3288.
+**Objective**: Trace `register_filesystem(&sock_fs_type)` (Line 3288 `net/socket.c`).
 **Context**: `fs/filesystems.c`.
 
 ```c
 int register_filesystem(struct file_system_type * fs)
 {
-    // 1. INPUT ANALYSIS
+    // 1. INPUT
     // Ptr: 0xffffffff839c2dc0 (sock_fs_type)
-    // Why: This structure contains the 'blueprints' (methods) for the socket filesystem.
 
     struct file_system_type ** p;
 
-    // 2. SYNTAX VALIDATION
+    // 2. VALIDATION
     BUG_ON(strchr(fs->name, '.')); 
-    // Op: Scan "sockfs" for '.'.
-    // Rationale: The VFS uses specific syntax like "ext4.usrquota" for subtypes.
-    //            Allowing dots in the base name would make parsing ambiguous.
-    // Consequence: A kernel panic prevents corrupted filesystem namespaces.
+    // Purpose: Dots are reserved for subtype syntax.
 
-    // 3. STATE VALIDATION
     if (fs->next) 
         return -EBUSY;
-    // Op: Check offset 0x38 (56).
-    // Rationale: A filesystem type can only be in one list at a time.
-    //            Non-NULL 'next' implies it's already registered or corrupted.
+    // Purpose: Enforce single-list membership.
 
-    // 4. CONCURRENCY CONTROL
+    // 3. LOCKING
     write_lock(&file_systems_lock);
     // Address: 0xffffffff84167a58.
-    // Rationale: The 'file_systems' list is a global singleton resource.
-    //            During boot (or module load), multiple CPUs triggers registration.
-    //            Exclusive write access prevents list corruption (dangling pointers).
+    // Purpose: Global list protection.
 
-    // 5. DUPLICATE DETECTION
+    // 4. DUPLICATE CHECK (Linear Scan)
     p = find_filesystem(fs->name, strlen(fs->name));
-    // Logic: O(N) Linear Scan.
-    // Rationale: We must ensure uniqueness of the filesystem name ("sockfs").
-    //            Collision would make `mount -t sockfs` non-deterministic.
-
-    // 6. ATOMIC INSERTION
     if (*p)
         res = -EBUSY;
     else
-        *p = fs;
-    // Op: Write 0xffffffff839c2dc0 to the tail pointer.
-    // Rationale: Changing the pointer is the "Commit Point".
-    //            Done under lock to ensure atomicity.
+        *p = fs; // 5. INSERTION
 
-    // 7. RELEASE
     write_unlock(&file_systems_lock);
-    // Rationale: Minimize critical section duration to reduce contention.
-
     return 0;
 }
 ```
 
-### MEMORY STATE: REGISTRY
+### MEMORY MAP: FILE_SYSTEMS
 ```ascii
 [ .data SECTION ]
 0xffffffff84167a60 (file_systems)
@@ -124,61 +95,47 @@ int register_filesystem(struct file_system_type * fs)
 +------------------------+
            |
            v
-[ .data SECTION ]
 0xffffffff839c2dc0 (sock_fs_type)
 +------------------------+ <--- 0x00
 | name: "sockfs"         |
-+------------------------+ <--- 0x08
-| fs_flags: 0x00000000   |
 +------------------------+ ...
 +------------------------+ <--- 0x38 (Offset 56)
 | next: NULL             |
 +------------------------+
 ```
 
-## 3. MOUNT POINT ANCHORING
+## 4. MOUNT POINT CREATION
 
-**Objective**: Trace `sock_mnt = kern_mount(&sock_fs_type)` at Line 3291.
+**Objective**: Trace `sock_mnt = kern_mount(&sock_fs_type)` (Line 3291 `net/socket.c`).
 **Context**: `fs/namespace.c`.
 
 ```c
 struct vfsmount *vfs_kern_mount(struct file_system_type *type, ...)
 {
-    // 1. CONTEXT INSULATION
+    // 1. ALLOCATE CONTEXT
     fc = fs_context_for_mount(type, flags);
-    // Op: Heap Alloc (fs_context) at 0xffff888100100000.
-    // Rationale: Modern Linux separates "configuration" (fs_context) from "action" (mount).
-    //            This allows parameters to be validated *before* touching the superblock.
+    // Heap: 0xffff888100100000 (fs_context).
     
-    // 2. MOUNT EXECUTION
+    // 2. MOUNT
     mnt = fc_mount(fc);
     
-        // A. INSTANCE CREATION
-        // Call: alloc_super -> Heap Alloc 0xffff888100200000.
-        // Rationale: The 'sock_fs_type' is static code (Class).
-        //            The 'super_block' is the runtime instance (Object).
-        //            We need an object to hold the list of active inodes.
+        // A. CREATE SUPERBLOCK (Instance)
+        // Call: alloc_super -> Heap: 0xffff888100200000.
 
-        // B. ROOT CREATION
-        // Call: d_make_root -> Heap Alloc 0xffff888100300000.
-        // Rationale: Every filesystem needs an entry point (Root Directory).
-        //            Even though sockfs is invisible, it must adhere to VFS topology.
+        // B. CREATE ROOT DENTRY
+        // Call: d_make_root -> Heap: 0xffff888100300000.
 
-    // 3. HANDLE CREATION
-    // Heap Alloc 0xffff888100400000 (vfsmount).
+    // 3. CREATE HANDLE (vfsmount)
+    // Heap: 0xffff888100400000.
     // Link: mnt->mnt_sb = 0xffff888100200000.
-    // Rationale: Checkpointing.
-    //            'sock_mnt' is the permanent handle. The kernel stores it globally
-    //            so it never has to re-mount 'sockfs' again.
-    //            It is the "Anchor" that keeps the superblock alive.
-
+    
+    // Purpose: 'sock_mnt' is the global handle keeping the superblock alive.
     return mnt;
 }
 ```
 
-### MEMORY STATE: ANCHOR
+### MEMORY MAP: SOCK_MNT
 ```ascii
-[ .data SECTION ]
 0xffffffff83a767a0 (sock_mnt)
 +--------------------------+
 | PTR: 0xffff888100400000  | ----------------+
@@ -186,39 +143,19 @@ struct vfsmount *vfs_kern_mount(struct file_system_type *type, ...)
                                              |
            [ HEAP: vfsmount ] <--------------+
            0xffff888100400000
-           +--------------------------+ <--- 0x00
-           | mnt_root: 0x...300000    | ------------+
-           +--------------------------+ <--- 0x08   |
-           | mnt_sb:   0x...200000    | --+         |
-           +--------------------------+   |         |
-                                          |         |
-           [ HEAP: super_block ] <--------+         |
-           0xffff888100200000                       |
-           +--------------------------+             |
-           | s_type: 0xffffffff839c2...             |
-           +--------------------------+             |
-                                                    |
-           [ HEAP: dentry (Root) ] <----------------+
-           0xffff888100300000
-           +--------------------------+
-           | d_inode: 0x... (Inodes)  |
-           +--------------------------+
+           | mnt_sb:   0x...200000    | --+
+                                          |
+           [ HEAP: super_block ] <--------+
+           0xffff888100200000
 ```
 
-## 4. ALGORITHMIC REASONING
+## 5. ALGORITHMIC ANALYSIS
 
-**Problem**: Is a Linear Scan O(N) acceptable for filesystem registration?
+**Question**: Is O(N) linear scan acceptable?
 
-**Calculations**:
-- **N = 1000** filesystems (Extreme Case).
-- **Comparison Cost**: 5ns (L1 Cache Hit).
-- **Total Ops**: sum(1..N) = 500,500.
-- **Time**: ~2.5 ms.
+**Data**:
+- **N**: < 50 types (ext4, xfs, etc).
+- **Cost**: < 500 comparison ops.
+- **Time**: Negligible (~microseconds).
 
-**Reasoning**:
-1.  **Frequency**: This happens only *once* per filesystem type (boot or module load).
-2.  **Scale**: Real systems have < 50 types (ext4, xfs, proc, sysfs, overlay, etc.).
-3.  **Trade-off**: Implementing a Hash Map for 50 items introduces overhead (allocation, hashing) and complexity that outweighs the saving of ~2.5ms at boot.
-4.  **Conclusion**: The "naive" O(N) approach is mathematically optimal for the constraints and scale of the problem.
-
-**[ NEXT: 03_RUNTIME ](lesson_runtime.html)**
+**Conclusion**: Linear scan is optimal for small, read-mostly datasets.
