@@ -1,4 +1,4 @@
-obj-m += msr_reader.o slab_anatomy.o fd_math_probe.o
+obj-m += msr_reader.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules

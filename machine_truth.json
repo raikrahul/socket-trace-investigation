@@ -11,6 +11,20 @@
             "sizeof_long": 8
         }
     },
+    "kernel_axioms": {
+        "AF_INET": 2,
+        "SOCK_STREAM": 1,
+        "__NR_socket": 41,
+        "MSR_LSTAR": "0xffffffff97800080",
+        "sizeof_socket": 128,
+        "sizeof_sock": 776,
+        "sizeof_tcp_sock": 2360,
+        "slab_socket_alloc_req": 768,
+        "slab_socket_alloc_act": 832,
+        "slab_replica_act": 768,
+        "slab_overhead_explained": "RCU_OR_DEBUG_FLAGS",
+        "fd_lookup_verified": true
+    },
     "kernel_space": {
         "structs": {
             "socket": 128,
